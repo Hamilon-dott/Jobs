@@ -170,24 +170,20 @@ const AdSenseComponent = ({ slot, format = "auto", layoutKey, isFluid = false }:
       // Don't push if already pushed or if element is gone
       if (isPushed.current || !adRef.current) return;
 
-      // Check if container has width to avoid availableWidth=0 error
-      if (adRef.current.offsetWidth > 0) {
-        try {
-          // @ts-ignore
-          if (window.adsbygoogle && Array.isArray(window.adsbygoogle)) {
-            // Further check to make sure this specific element hasn't been processed
+      try {
+        // @ts-ignore
+        if (window.adsbygoogle && Array.isArray(window.adsbygoogle)) {
+          // Check offsetWidth to avoid availableWidth=0 error
+          if (adRef.current.offsetWidth > 0) {
             if (!adRef.current.hasAttribute('data-adsbygoogle-status')) {
               // @ts-ignore
               (window.adsbygoogle = window.adsbygoogle || []).push({});
               isPushed.current = true;
             }
           }
-        } catch (e) {
-          console.error("AdSense push error", e);
         }
-      } else {
-        // Retry if no width yet
-        timeoutId = setTimeout(pushAd, 200);
+      } catch (e) {
+        console.error("AdSense push error", e);
       }
     };
 
@@ -646,6 +642,19 @@ export default function App() {
 
   useEffect(() => {
     fetchJobs();
+    
+    // Safety fallback: if still loading after 15 seconds, force stop loading
+    const timer = setTimeout(() => {
+      setLoading(prev => {
+        if (prev) {
+          console.warn("Loading timed out, forcing display");
+          return false;
+        }
+        return prev;
+      });
+    }, 15000);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const getFallbackJobs = () => {
@@ -695,7 +704,10 @@ export default function App() {
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
-        const { lastSyncTime, jobs: cachedJobs } = JSON.parse(cached);
+        const parsed = JSON.parse(cached);
+        const cachedJobs = parsed?.jobs;
+        const lastSyncTime = parsed?.lastSyncTime;
+        
         if (Array.isArray(cachedJobs) && cachedJobs.length > 0) {
           setJobs(cachedJobs);
           setCurrentPage(1);
@@ -703,7 +715,7 @@ export default function App() {
           hasCachedData = true;
           
           const now = Date.now();
-          if (now - lastSyncTime < 2 * 60 * 1000) {
+          if (now - (lastSyncTime || 0) < 2 * 60 * 1000) {
             setIsFullLoading(false);
             return; 
           }
@@ -722,11 +734,13 @@ export default function App() {
     
     try {
       // Stage 1: Fast Summary Fetch
-      const response = await axios.get(`/api/jobs?t=${timestamp}`);
+      const response = await axios.get(`/api/jobs?t=${timestamp}`, { timeout: 8000 });
       const data = response.data;
-      if (Array.isArray(data) && data.length > 0) {
-        setJobs(data);
-        setCurrentPage(1);
+      if (Array.isArray(data)) {
+        if (data.length > 0) {
+          setJobs(data);
+          setCurrentPage(1);
+        }
         setLoading(false);
       }
     } catch (error) {
@@ -739,7 +753,7 @@ export default function App() {
 
     // Stage 2: Background Full Fetch
     try {
-      const fullResponse = await axios.get(`/api/jobs?full=true&t=${timestamp}`);
+      const fullResponse = await axios.get(`/api/jobs?full=true&t=${timestamp}`, { timeout: 15000 });
       const fullData = fullResponse.data;
       if (Array.isArray(fullData) && fullData.length > 0) {
         setJobs(fullData);
@@ -787,11 +801,13 @@ export default function App() {
   };
 
   const filteredJobs = jobs.filter(job => {
+    if (!job || !job.title || !job.organization) return false;
+    
     const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           job.organization.toLowerCase().includes(searchTerm.toLowerCase());
     
     // Check if the source (comma separated) contains the active filter
-    const jobCategories = job.source.split(',').map(s => s.trim());
+    const jobCategories = (job.source || 'General').split(',').map(s => s.trim());
     
     let matchesFilter = activeFilter === 'All' || jobCategories.includes(activeFilter);
     
@@ -983,30 +999,23 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1000] bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+            className="fixed bottom-4 left-4 right-4 z-[1000] bg-white border-2 border-rose-500 rounded-2xl shadow-2xl p-4 flex items-center justify-between"
           >
-            <div className="relative mb-8">
-              <div className="w-24 h-24 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Globe size={32} className="text-blue-500 animate-pulse" />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-rose-50 rounded-full flex items-center justify-center text-rose-500">
+                <Globe size={20} className="animate-pulse" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-slate-900">ইন্টারনেট সংযোগ নেই!</p>
+                <p className="text-[10px] text-slate-500">সংযোগের জন্য অপেক্ষা করা হচ্ছে...</p>
               </div>
             </div>
-            <h1 className="text-xl md:text-2xl font-black text-slate-900 mb-3">ইন্টারনেট সংযোগ বিচ্ছিন্ন!</h1>
-            <p className="text-slate-500 max-w-xs mb-8 leading-relaxed font-medium">
-              সার্কুলারগুলো লোড করার জন্য ইন্টারনেট প্রয়োজন। আমরা সংযোগ পুনস্থাপনের জন্য অপেক্ষা করছি...
-            </p>
-            <div className="flex flex-col items-center gap-4">
-              <div className="flex items-center gap-2 text-blue-600 font-bold bg-blue-50 px-4 py-2 rounded-full text-sm">
-                <span className="w-2 h-2 bg-blue-600 rounded-full animate-ping" />
-                সংযুক্ত হওয়ার চেষ্টা করা হচ্ছে
-              </div>
-              <button 
-                onClick={() => window.location.reload()}
-                className="text-xs font-bold text-slate-400 hover:text-[#3b82f6] underline transition-colors"
-              >
-                পেজটি রিফ্রেশ করুন (Refresh Page)
-              </button>
-            </div>
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-rose-500 text-white rounded-lg text-xs font-bold hover:bg-rose-600 transition-colors"
+            >
+              রিফ্রেশ দিন
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
