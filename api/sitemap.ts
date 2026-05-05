@@ -11,36 +11,47 @@ const HOST = 'https://jobs.talukdaracademy.com.bd';
 async function fetchSitemapData() {
   const jobs: any[] = [];
   try {
-    // Fetch top 3 pages of posts to keep it within Vercel timeout limits
-    // We only need id, date, title, and content (for image extraction)
-    for (let page = 1; page <= 3; page++) {
-      const response = await axios.get(`https://bdgovtjob.net/wp-json/wp/v2/posts?per_page=100&page=${page}&_fields=id,date,title,content`, { 
-        httpsAgent,
-        timeout: 8000,
-        headers: { 
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
-        }
-      });
-      if (Array.isArray(response.data)) {
-        response.data.forEach((post: any) => {
-          const rawContent = post.content?.rendered || "";
-          // Quick regex for images since we don't want to load cheerio here for speed
-          const imgMatches = rawContent.matchAll(/src=["']([^"'>]+\.(?:jpg|jpeg|png|webp|gif)[^"'>]*)["']/gi);
-          const imageUrls = Array.from(imgMatches, m => m[1]).slice(0, 3);
-
-          jobs.push({
-            id: post.id,
-            date: post.date,
-            title: post.title?.rendered || "",
-            images: imageUrls
-          });
+    // Increase reliability by fetching smaller chunks
+    const perPage = 50;
+    const maxPages = 4;
+    
+    for (let page = 1; page <= maxPages; page++) {
+      try {
+        const response = await axios.get(`https://bdgovtjob.net/wp-json/wp/v2/posts?per_page=${perPage}&page=${page}&_fields=id,date,title,content`, { 
+          httpsAgent,
+          timeout: 15000, 
+          headers: { 
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36' 
+          }
         });
-      } else {
-        break;
+        
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          response.data.forEach((post: any) => {
+            const rawContent = post.content?.rendered || "";
+            const imgMatches = rawContent.matchAll(/src=["']([^"'>]+\.(?:jpg|jpeg|png|webp|gif)[^"'>]*)["']/gi);
+            const imageUrls = Array.from(imgMatches, m => m[1])
+              .filter(url => url && (url.startsWith('http') || url.startsWith('/')))
+              .slice(0, 3);
+
+            jobs.push({
+              id: post.id,
+              date: post.date,
+              title: post.title?.rendered || "Job Circular",
+              images: imageUrls
+            });
+          });
+        } else {
+          break;
+        }
+      } catch (pageError) {
+        console.error(`Sitemap fetch failed for page ${page}:`, pageError);
+        // If we have some data, return it instead of failing everything
+        if (jobs.length > 0) break;
+        throw pageError; // If first page fails, throw to main catch
       }
     }
   } catch (e) {
-    console.error('Sitemap fetch failed', e);
+    console.error('Sitemap fetch process critical failure:', e);
   }
   return jobs;
 }
@@ -61,7 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const imagesMarkup = job.images.map((img: string) => `
     <image:image>
       <image:loc>${img.startsWith('http') ? img : HOST + img}</image:loc>
-      <image:title><![CDATA[${job.title.replace(/<\/?[^>]+(>|$)/g, "")}]]></image:title>
+      <image:title><![CDATA[${job.title.replace(/<\/?[^>]+(>|$)/g, "").replace(/[<&"]/g, "")}]]></image:title>
     </image:image>`).join('');
 
     return `
@@ -75,6 +86,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </urlset>`;
 
   res.setHeader('Content-Type', 'application/xml');
-  res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=600');
+  if (jobs.length > 0) {
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=600');
+  } else {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
   res.status(200).send(sitemap.trim());
 }
