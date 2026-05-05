@@ -78,8 +78,8 @@ async function fetchLatestJobs(isFull: boolean = false) {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(today.getDate() - 30);
   
-  const targetCount = isFull ? 800 : 150;
-  const maxSearchPages = isFull ? 40 : 15;
+  const targetCount = isFull ? 350 : 40;
+  const maxSearchPages = isFull ? 8 : 2;
 
   for (const source of sources) {
     try {
@@ -92,7 +92,7 @@ async function fetchLatestJobs(isFull: boolean = false) {
         const timestamp = Date.now();
         const response = await axios.get(`${source.baseUrl}&per_page=100&page=${page}&_t=${timestamp}`, { 
           httpsAgent, 
-          timeout: 10000,
+          timeout: 6000,
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
         });
         

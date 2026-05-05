@@ -4,69 +4,60 @@ import path from 'path';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import https from 'https';
-import compression from 'compression';
-
-// In-memory cache
-let jobsCache: any[] = [];
-let jobsSummaryCache: any[] = [];
-let lastCacheUpdate: number = 0;
-let cachedIndexHtml: string | null = null;
-const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
-let isUpdatingCache = false;
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(compression());
   app.use(express.json());
 
-  // Background cache refresh task
-  const refreshCache = async (force = false) => {
-    if (isUpdatingCache) return;
-    const now = Date.now();
-    if (!force && jobsCache.length > 0 && (now - lastCacheUpdate < CACHE_DURATION)) {
-      return;
-    }
+  // Robots.txt
+  app.get('/robots.txt', (req, res) => {
+    res.type('text/plain');
+    res.send(`User-agent: *
+Allow: /
+Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
+  });
 
+  // Sitemap.xml
+  app.get('/sitemap.xml', async (req, res) => {
     try {
-      isUpdatingCache = true;
-      console.log('Refreshing jobs cache...');
       const jobs = await fetchLatestJobs(true);
-      if (jobs && jobs.length > 0) {
-        jobsCache = jobs;
-        // Create summaries (exclude content for smaller payloads)
-        jobsSummaryCache = jobs.map(({ content, ...summary }) => summary);
-        lastCacheUpdate = Date.now();
-        console.log(`Cache updated with ${jobsCache.length} jobs.`);
-      }
-    } catch (error) {
-      console.error('Failed to update jobs cache:', error);
-    } finally {
-      isUpdatingCache = false;
-    }
-  };
+      const host = `${req.protocol}://${req.get('host')}`;
+      
+      const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${host}/</loc>
+    <changefreq>always</changefreq>
+    <priority>1.0</priority>
+  </url>
+  ${jobs.map(job => `
+  <url>
+    <loc>${host}/?job=${job.id}</loc>
+    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`).join('')}
+</urlset>`;
 
-  // Initial fetch
-  refreshCache();
-  // Set interval for background updates
-  setInterval(refreshCache, CACHE_DURATION);
+      res.type('application/xml');
+      res.send(sitemap);
+    } catch (error) {
+      console.error('Error generating sitemap:', error);
+      res.status(500).send('Error generating sitemap');
+    }
+  });
 
   // API Route to fetch jobs
-  app.get('/api/jobs', (req, res) => {
-    const isFullRequested = req.query.full === 'true';
-    const jobId = req.query.id as string;
-
-    if (jobId) {
-      const job = jobsCache.find(j => j.id === jobId);
-      if (job) return res.json(job);
-      return res.status(404).json({ error: 'Job not found' });
-    }
-
-    if (isFullRequested) {
-      res.json(jobsCache);
-    } else {
-      res.json(jobsSummaryCache);
+  app.get('/api/jobs', async (req, res) => {
+    try {
+      const isFull = req.query.full === 'true';
+      const jobs = await fetchLatestJobs(isFull);
+      res.json(jobs);
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+      res.status(500).json({ error: 'Failed to fetch jobs' });
     }
   });
 
@@ -79,51 +70,9 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    const fs = await import('fs');
-    
-    app.use(express.static(distPath, { index: false }));
-    
-    app.get('*', async (req, res) => {
-      try {
-        if (!cachedIndexHtml) {
-          cachedIndexHtml = fs.readFileSync(path.join(distPath, 'index.html'), 'utf-8');
-        }
-        
-        let html = cachedIndexHtml;
-        const jobId = req.query.job as string;
-        
-        if (jobId) {
-          // Use cached data for SEO instead of fresh fetch
-          const job = jobsCache.find(j => j.id === jobId);
-          
-          if (job) {
-            const title = `${job.title} - ${job.organization}`;
-            const description = `নিয়োগ বিজ্ঞপ্তি: ${job.title}। প্রতিষ্ঠান: ${job.organization}। আবেদনের শেষ তারিখ: ${job.deadline}। বিস্তারিত দেখুন আমাদের ওয়েবসাইটে।`;
-            const url = `https://jobs.talukdaracademy.com.bd/?job=${job.id}`;
-            const image = job.imageUrls?.[0] || 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Government_Seal_of_Bangladesh.svg/120px-Government_Seal_of_Bangladesh.svg.png';
-
-            // Inject Meta Tags
-            html = html.replace(/<title>.*?<\/title>/, `<title>${title}</title>`);
-            html = html.replace(/<meta name="description" content=".*?"\s*\/?>/, `<meta name="description" content="${description}" />`);
-            
-            // OG Tags
-            html = html.replace(/<meta property="og:title" content=".*?"\s*\/?>/, `<meta property="og:title" content="${title}" />`);
-            html = html.replace(/<meta property="og:description" content=".*?"\s*\/?>/, `<meta property="og:description" content="${description}" />`);
-            html = html.replace(/<meta property="og:url" content=".*?"\s*\/?>/, `<meta property="og:url" content="${url}" />`);
-            html = html.replace(/<meta property="og:image" content=".*?"\s*\/?>/, `<meta property="og:image" content="${image}" />`);
-
-            // Twitter Tags
-            html = html.replace(/<meta property="twitter:title" content=".*?"\s*\/?>/, `<meta property="twitter:title" content="${title}" />`);
-            html = html.replace(/<meta property="twitter:description" content=".*?"\s*\/?>/, `<meta property="twitter:description" content="${description}" />`);
-            html = html.replace(/<meta property="twitter:image" content=".*?"\s*\/?>/, `<meta property="twitter:image" content="${image}" />`);
-          }
-        }
-        
-        res.status(200).set({ 'Content-Type': 'text/html' }).set('Cache-Control', 'public, max-age=60').end(html);
-      } catch (e) {
-        console.error('Error serving index.html:', e);
-        res.status(500).send('Internal Server Error');
-      }
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 

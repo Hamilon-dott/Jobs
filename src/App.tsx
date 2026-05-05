@@ -159,67 +159,67 @@ const getDaysRemaining = (deadlineStr: string) => {
 
 const BD_GOVT_LOGO = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Government_Seal_of_Bangladesh.svg/120px-Government_Seal_of_Bangladesh.svg.png";
 
-const AdSenseComponent = ({ slot, format = "auto", layoutKey, isFluid = false }: { slot: string, format?: string, layoutKey?: string, isFluid?: boolean }) => {
-  const adRef = React.useRef<HTMLModElement>(null);
-  const isPushed = React.useRef(false);
+const InFeedAdComponent = () => {
+  const isAdSet = React.useRef(false);
 
   useEffect(() => {
-    let timeoutId: any;
-    
-    const pushAd = () => {
-      // Don't push if already pushed or if element is gone
-      if (isPushed.current || !adRef.current) return;
-
+    if (!isAdSet.current) {
       try {
         // @ts-ignore
-        if (window.adsbygoogle && Array.isArray(window.adsbygoogle)) {
-          // Check offsetWidth to avoid availableWidth=0 error
-          if (adRef.current.offsetWidth > 0) {
-            if (!adRef.current.hasAttribute('data-adsbygoogle-status')) {
-              // @ts-ignore
-              (window.adsbygoogle = window.adsbygoogle || []).push({});
-              isPushed.current = true;
-            }
-          }
+        if (window.adsbygoogle) {
+          // @ts-ignore
+          (window.adsbygoogle = window.adsbygoogle || []).push({});
+          isAdSet.current = true;
         }
       } catch (e) {
-        console.error("AdSense push error", e);
+        console.error("AdSense error", e);
       }
-    };
-
-    // Initial attempt after a small delay to allow for layout
-    timeoutId = setTimeout(pushAd, 300);
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-    };
+    }
   }, []);
 
   return (
-    <div className="w-full flex justify-center my-4 overflow-hidden min-h-[100px] bg-slate-50/50 rounded-xl relative border border-slate-100">
-      <div className="absolute top-2 left-2 text-[8px] md:text-[10px] text-slate-400 font-medium tracking-wider uppercase z-0">Advertisement</div>
-      <ins 
-        ref={adRef}
-        className="adsbygoogle w-full block min-w-[250px]"
-        style={{ display: "block" }}
-        data-ad-client="ca-pub-7608093638667157"
-        data-ad-slot={slot}
-        data-ad-format={format}
-        {...(layoutKey ? { 'data-ad-layout-key': layoutKey } : {})}
-        {...(isFluid ? { 'data-ad-format': 'fluid' } : {})}
-        data-full-width-responsive="true"
-      ></ins>
+    <div className="w-full flex justify-center my-4 overflow-hidden min-h-[100px] bg-slate-50/50 rounded-xl relative">
+      <div className="absolute top-2 left-2 text-[10px] text-slate-400 font-medium tracking-wider uppercase">Advertisement</div>
+      <ins className="adsbygoogle w-full"
+           style={{ display: "block" }}
+           data-ad-format="fluid"
+           data-ad-layout-key="-fb+5w+4e-db+86"
+           data-ad-client="ca-pub-7608093638667157"
+           data-ad-slot="7997452271"></ins>
     </div>
   );
 };
 
-const InFeedAdComponent = () => (
-  <AdSenseComponent slot="7997452271" format="fluid" layoutKey="-fb+5w+4e-db+86" isFluid={true} />
-);
+const AdComponent = () => {
+  const isAdSet = React.useRef(false);
 
-const AdComponent = () => (
-  <AdSenseComponent slot="8382578589" />
-);
+  useEffect(() => {
+    if (!isAdSet.current) {
+      try {
+        // @ts-ignore
+        if (window.adsbygoogle) {
+          // @ts-ignore
+          (window.adsbygoogle = window.adsbygoogle || []).push({});
+          isAdSet.current = true;
+        }
+      } catch (e) {
+        console.error("AdSense error", e);
+      }
+    }
+  }, []);
+
+  return (
+    <div className="w-full flex justify-center my-4 overflow-hidden min-h-[100px] bg-slate-50/50 rounded-xl relative">
+      <div className="absolute top-2 left-2 text-[10px] text-slate-400 font-medium tracking-wider uppercase">Advertisement</div>
+      <ins className="adsbygoogle w-full"
+           style={{ display: "block" }}
+           data-ad-client="ca-pub-7608093638667157"
+           data-ad-slot="8382578589"
+           data-ad-format="auto"
+           data-full-width-responsive="true"></ins>
+    </div>
+  );
+};
 
 export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -238,34 +238,6 @@ export default function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [activePage, setActivePage] = useState<'home' | 'privacy' | 'terms' | 'contact'>('home');
   const [jobSummaries, setJobSummaries] = useState<Record<string, { text: string; loading: boolean; error?: string }>>({});
-
-  // Dynamic Canonical Link Management to fix Search Console "Duplicate without user-selected canonical"
-  useEffect(() => {
-    const updateCanonical = () => {
-      let canonical = document.querySelector('link[rel="canonical"]');
-      if (!canonical) {
-        canonical = document.createElement('link');
-        canonical.setAttribute('rel', 'canonical');
-        document.head.appendChild(canonical);
-      }
-      
-      // We want to point Google to a clean URL on the custom domain.
-      // If a job is selected via query param, we keep that, but strip cache-busters like ?t=...
-      const url = new URL(window.location.href);
-      const customOrigin = "https://jobs.talukdaracademy.com.bd";
-      const cleanUrl = new URL(customOrigin + url.pathname);
-      
-      // Preserve the 'job' parameter if it's there, as it identifies the unique content
-      const jobParam = url.searchParams.get('job');
-      if (jobParam) {
-        cleanUrl.searchParams.set('job', jobParam);
-      }
-      
-      canonical.setAttribute('href', cleanUrl.toString());
-    };
-
-    updateCanonical();
-  }, [selectedJob]);
   
   const aiRef = React.useRef<GoogleGenAI | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
@@ -387,43 +359,32 @@ export default function App() {
 
   // SEO Helpers
   useEffect(() => {
-    const updateMetaTag = (property: string, content: string, attr: string = 'property') => {
-      let element = document.querySelector(`meta[${attr}="${property}"]`);
-      if (!element) {
-        element = document.createElement('meta');
-        element.setAttribute(attr, property);
-        document.head.appendChild(element);
-      }
-      element.setAttribute('content', content);
-    };
-
     if (selectedJob) {
-      const title = `${selectedJob.title} - ${selectedJob.organization}`;
-      const description = `Apply for ${selectedJob.title} at ${selectedJob.organization}. BD Govt Job Circular 2026.`;
-      const customOrigin = "https://jobs.talukdaracademy.com.bd";
-      const url = `${customOrigin}/?job=${selectedJob.id}`;
+      const title = `${selectedJob.title} - ${selectedJob.organization} | Jobs.talukdaracademy.com.bd`;
+      const description = `Apply for ${selectedJob.title} at ${selectedJob.organization}. Deadline: ${selectedJob.deadline}. Find more details and application instructions for this BD Govt Job Circular 2026.`;
       
       document.title = title;
-      
-      // Basic Meta
-      updateMetaTag('description', description, 'name');
-      
-      // OG Meta
-      updateMetaTag('og:title', title);
-      updateMetaTag('og:description', description);
-      updateMetaTag('og:url', url);
-      
-      // Twitter Meta
-      updateMetaTag('twitter:title', title);
-      updateMetaTag('twitter:description', description);
+      const metaDescription = document.querySelector('meta[name="description"]');
+      if (metaDescription) {
+        metaDescription.setAttribute('content', description);
+      }
       
       // Update URL without reloading
-      const currentUrl = new URL(window.location.href);
-      const currentId = currentUrl.searchParams.get('job');
+      const url = new URL(window.location.href);
+      const currentId = url.searchParams.get('job');
       if (currentId !== selectedJob.id) {
-        currentUrl.searchParams.set('job', selectedJob.id);
-        window.history.pushState({ job: selectedJob.id }, '', currentUrl.toString());
+        url.searchParams.set('job', selectedJob.id);
+        window.history.pushState({ job: selectedJob.id }, '', url.toString());
       }
+
+      // Add/Update Canonical Link
+      let canonical = document.querySelector('link[rel="canonical"]');
+      if (!canonical) {
+        canonical = document.createElement('link');
+        canonical.setAttribute('rel', 'canonical');
+        document.head.appendChild(canonical);
+      }
+      canonical.setAttribute('href', url.toString());
 
       // JSON-LD for Google Jobs
       const existingScript = document.getElementById('job-jsonld');
@@ -433,6 +394,7 @@ export default function App() {
       script.id = 'job-jsonld';
       script.type = 'application/ld+json';
       
+      // Helper to safely format dates for JSON-LD
       const formatISO = (dateStr: string | null | undefined) => {
         if (!dateStr) return undefined;
         try {
@@ -466,30 +428,34 @@ export default function App() {
           }
         }
       };
-
+      
       script.textContent = JSON.stringify(jobSchema);
       document.head.appendChild(script);
     } else {
-      const defaultTitle = "Jobs BD - BD Govt Job Circular 2026";
-      const defaultDesc = "All Government Job Circulars in Bangladesh. Find recent govt job circular 2026.";
-      const defaultUrl = "https://jobs.talukdaracademy.com.bd/";
-
-      document.title = defaultTitle;
-      updateMetaTag('description', defaultDesc, 'name');
-      updateMetaTag('og:title', defaultTitle);
-      updateMetaTag('og:description', defaultDesc);
-      updateMetaTag('og:url', defaultUrl);
-      updateMetaTag('twitter:title', defaultTitle);
-      updateMetaTag('twitter:description', defaultDesc);
-
+      document.title = "Jobs.talukdaracademy.com.bd - BD Govt Job Circular 2026 | All Govt Jobs BD";
+      
       const url = new URL(window.location.href);
+      
+      // Reset Canonical Link to Home
+      let canonical = document.querySelector('link[rel="canonical"]');
+      if (canonical) {
+        canonical.setAttribute('href', window.location.origin + '/');
+      }
+
+      // Only clear the URL if it actually has a job param and we explicitly want to clear it (not just initial state)
       if (url.searchParams.has('job')) {
         const urlJobId = url.searchParams.get('job');
         if (jobs.length > 0) {
+           const jobExistsInList = jobs.some(j => j.id === urlJobId);
            const isExactlyOnHomeWithoutJob = activePage === 'home' && !selectedJob;
+           
+           // Only clear if it's not in the list AND we've potentially already tried direct fetching
+           // Or if we are explicitly on home and current selectedJob doesn't match the URL (meaning we navigated away)
            if (isExactlyOnHomeWithoutJob) {
               const currentIdInState = selectedJob?.id;
               if (urlJobId !== currentIdInState) {
+                // If the URL has an ID but our state is null, we check if we should keep waiting or clear
+                // If jobs are loaded and we've waited a bit, we can clear
                 url.searchParams.delete('job');
                 window.history.pushState({}, '', url.toString());
               }
@@ -500,7 +466,7 @@ export default function App() {
       const existingScript = document.getElementById('job-jsonld');
       if (existingScript) existingScript.remove();
     }
-  }, [selectedJob, jobs, activePage]);
+  }, [selectedJob]);
 
   useEffect(() => {
     // Initial deep link check
@@ -642,19 +608,6 @@ export default function App() {
 
   useEffect(() => {
     fetchJobs();
-    
-    // Safety fallback: if still loading after 15 seconds, force stop loading
-    const timer = setTimeout(() => {
-      setLoading(prev => {
-        if (prev) {
-          console.warn("Loading timed out, forcing display");
-          return false;
-        }
-        return prev;
-      });
-    }, 15000);
-    
-    return () => clearTimeout(timer);
   }, []);
 
   const getFallbackJobs = () => {
@@ -698,24 +651,26 @@ export default function App() {
 
   const fetchJobs = async () => {
     const CACHE_KEY = 'job_db_cache';
+    const SYNC_INTERVAL = 10 * 60 * 1000; // 10 minutes for full sync silence
+
     let hasCachedData = false;
 
     // Stage 0: Priority Cache Load
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
-        const parsed = JSON.parse(cached);
-        const cachedJobs = parsed?.jobs;
-        const lastSyncTime = parsed?.lastSyncTime;
-        
+        const { lastSyncTime, jobs: cachedJobs } = JSON.parse(cached);
         if (Array.isArray(cachedJobs) && cachedJobs.length > 0) {
+          console.log("Showing cached jobs immediately...");
           setJobs(cachedJobs);
           setCurrentPage(1);
           setLoading(false);
           hasCachedData = true;
           
+          // If the cache is very fresh (less than 2 mins), we might skip the aggressive re-fetch
+          // but for now, we'll always re-fetch in background to satisfy the user's need for new data.
           const now = Date.now();
-          if (now - (lastSyncTime || 0) < 2 * 60 * 1000) {
+          if (now - lastSyncTime < 2 * 60 * 1000) {
             setIsFullLoading(false);
             return; 
           }
@@ -733,15 +688,12 @@ export default function App() {
     const timestamp = Date.now();
     
     try {
-      // Stage 1: Fast Summary Fetch
-      const response = await axios.get(`/api/jobs?t=${timestamp}`, { timeout: 8000 });
+      // Stage 1: Always Fetch Fresh Data in Background (Fast Load)
+      const response = await axios.get(`/api/jobs?t=${timestamp}`);
       const data = response.data;
-      if (Array.isArray(data)) {
-        if (data.length > 0) {
-          setJobs(data);
-          setCurrentPage(1);
-        }
-        setLoading(false);
+      if (Array.isArray(data) && data.length > 0) {
+        setJobs(data);
+        if (loading) setLoading(false);
       }
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
@@ -751,22 +703,13 @@ export default function App() {
       }
     }
 
-    // Stage 2: Background Full Fetch
+    // Stage 2: Background Full Load
     try {
-      const fullResponse = await axios.get(`/api/jobs?full=true&t=${timestamp}`, { timeout: 15000 });
+      const fullResponse = await axios.get(`/api/jobs?full=true&t=${timestamp}`);
       const fullData = fullResponse.data;
       if (Array.isArray(fullData) && fullData.length > 0) {
         setJobs(fullData);
-        // If we have a selected job without content, update it
-        setSelectedJob(prev => {
-          if (prev && !prev.content) {
-            const updated = fullData.find(j => j.id === prev.id);
-            return updated || prev;
-          }
-          return prev;
-        });
-
-        // Save to cache
+        // Save to cache with timestamp
         try {
           localStorage.setItem(CACHE_KEY, JSON.stringify({
             lastSyncTime: Date.now(),
@@ -784,30 +727,12 @@ export default function App() {
     }
   };
 
-  const handleJobSelect = async (job: Job) => {
-    setSelectedJob(job);
-    if (!job.content) {
-      try {
-        const response = await axios.get(`/api/jobs?id=${job.id}`);
-        if (response.data && response.data.content) {
-          setSelectedJob(response.data);
-          // Also update it in the main list so we don't fetch it again
-          setJobs(prev => prev.map(j => j.id === job.id ? response.data : j));
-        }
-      } catch (e) {
-        console.error("Failed to fetch job detail", e);
-      }
-    }
-  };
-
   const filteredJobs = jobs.filter(job => {
-    if (!job || !job.title || !job.organization) return false;
-    
     const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           job.organization.toLowerCase().includes(searchTerm.toLowerCase());
     
     // Check if the source (comma separated) contains the active filter
-    const jobCategories = (job.source || 'General').split(',').map(s => s.trim());
+    const jobCategories = job.source.split(',').map(s => s.trim());
     
     let matchesFilter = activeFilter === 'All' || jobCategories.includes(activeFilter);
     
@@ -999,23 +924,30 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed bottom-4 left-4 right-4 z-[1000] bg-white border-2 border-rose-500 rounded-2xl shadow-2xl p-4 flex items-center justify-between"
+            className="fixed inset-0 z-[1000] bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
           >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-rose-50 rounded-full flex items-center justify-center text-rose-500">
-                <Globe size={20} className="animate-pulse" />
-              </div>
-              <div className="text-left">
-                <p className="text-sm font-bold text-slate-900">ইন্টারনেট সংযোগ নেই!</p>
-                <p className="text-[10px] text-slate-500">সংযোগের জন্য অপেক্ষা করা হচ্ছে...</p>
+            <div className="relative mb-8">
+              <div className="w-24 h-24 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Globe size={32} className="text-blue-500 animate-pulse" />
               </div>
             </div>
-            <button 
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-rose-500 text-white rounded-lg text-xs font-bold hover:bg-rose-600 transition-colors"
-            >
-              রিফ্রেশ দিন
-            </button>
+            <h1 className="text-xl md:text-2xl font-black text-slate-900 mb-3">ইন্টারনেট সংযোগ বিচ্ছিন্ন!</h1>
+            <p className="text-slate-500 max-w-xs mb-8 leading-relaxed font-medium">
+              সার্কুলারগুলো লোড করার জন্য ইন্টারনেট প্রয়োজন। আমরা সংযোগ পুনস্থাপনের জন্য অপেক্ষা করছি...
+            </p>
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex items-center gap-2 text-blue-600 font-bold bg-blue-50 px-4 py-2 rounded-full text-sm">
+                <span className="w-2 h-2 bg-blue-600 rounded-full animate-ping" />
+                সংযুক্ত হওয়ার চেষ্টা করা হচ্ছে
+              </div>
+              <button 
+                onClick={() => window.location.reload()}
+                className="text-xs font-bold text-slate-400 hover:text-[#3b82f6] underline transition-colors"
+              >
+                পেজটি রিফ্রেশ করুন (Refresh Page)
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1328,7 +1260,7 @@ export default function App() {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: idx * 0.03 }}
                         key={job.id}
-                        onClick={() => handleJobSelect(job)}
+                        onClick={() => setSelectedJob(job)}
                         className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col md:flex-row md:items-center justify-between group hover:border-[#3b82f6]/50 hover:shadow-md transition-all duration-200 gap-3 cursor-pointer"
                       >
                         <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">
