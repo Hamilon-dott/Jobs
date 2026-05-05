@@ -689,8 +689,6 @@ export default function App() {
 
   const fetchJobs = async () => {
     const CACHE_KEY = 'job_db_cache';
-    const SYNC_INTERVAL = 10 * 60 * 1000; // 10 minutes for full sync silence
-
     let hasCachedData = false;
 
     // Stage 0: Priority Cache Load
@@ -699,14 +697,11 @@ export default function App() {
       if (cached) {
         const { lastSyncTime, jobs: cachedJobs } = JSON.parse(cached);
         if (Array.isArray(cachedJobs) && cachedJobs.length > 0) {
-          console.log("Showing cached jobs immediately...");
           setJobs(cachedJobs);
           setCurrentPage(1);
           setLoading(false);
           hasCachedData = true;
           
-          // If the cache is very fresh (less than 2 mins), we might skip the aggressive re-fetch
-          // but for now, we'll always re-fetch in background to satisfy the user's need for new data.
           const now = Date.now();
           if (now - lastSyncTime < 2 * 60 * 1000) {
             setIsFullLoading(false);
@@ -726,7 +721,7 @@ export default function App() {
     const timestamp = Date.now();
     
     try {
-      // Stage 1: Always Fetch Fresh Data in Background (Fast Load)
+      // Stage 1: Fast Summary Fetch
       const response = await axios.get(`/api/jobs?t=${timestamp}`);
       const data = response.data;
       if (Array.isArray(data) && data.length > 0) {
@@ -742,13 +737,22 @@ export default function App() {
       }
     }
 
-    // Stage 2: Background Full Load
+    // Stage 2: Background Full Fetch
     try {
       const fullResponse = await axios.get(`/api/jobs?full=true&t=${timestamp}`);
       const fullData = fullResponse.data;
       if (Array.isArray(fullData) && fullData.length > 0) {
         setJobs(fullData);
-        // Save to cache with timestamp
+        // If we have a selected job without content, update it
+        setSelectedJob(prev => {
+          if (prev && !prev.content) {
+            const updated = fullData.find(j => j.id === prev.id);
+            return updated || prev;
+          }
+          return prev;
+        });
+
+        // Save to cache
         try {
           localStorage.setItem(CACHE_KEY, JSON.stringify({
             lastSyncTime: Date.now(),
@@ -763,6 +767,22 @@ export default function App() {
     } finally {
       setIsFullLoading(false);
       setLoading(false);
+    }
+  };
+
+  const handleJobSelect = async (job: Job) => {
+    setSelectedJob(job);
+    if (!job.content) {
+      try {
+        const response = await axios.get(`/api/jobs?id=${job.id}`);
+        if (response.data && response.data.content) {
+          setSelectedJob(response.data);
+          // Also update it in the main list so we don't fetch it again
+          setJobs(prev => prev.map(j => j.id === job.id ? response.data : j));
+        }
+      } catch (e) {
+        console.error("Failed to fetch job detail", e);
+      }
     }
   };
 
@@ -1299,7 +1319,7 @@ export default function App() {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: idx * 0.03 }}
                         key={job.id}
-                        onClick={() => setSelectedJob(job)}
+                        onClick={() => handleJobSelect(job)}
                         className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col md:flex-row md:items-center justify-between group hover:border-[#3b82f6]/50 hover:shadow-md transition-all duration-200 gap-3 cursor-pointer"
                       >
                         <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">

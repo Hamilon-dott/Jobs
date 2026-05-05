@@ -4,22 +4,69 @@ import path from 'path';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import https from 'https';
+import compression from 'compression';
+
+// In-memory cache
+let jobsCache: any[] = [];
+let jobsSummaryCache: any[] = [];
+let lastCacheUpdate: number = 0;
+let cachedIndexHtml: string | null = null;
+const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+let isUpdatingCache = false;
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(compression());
   app.use(express.json());
 
-  // API Route to fetch jobs
-  app.get('/api/jobs', async (req, res) => {
+  // Background cache refresh task
+  const refreshCache = async (force = false) => {
+    if (isUpdatingCache) return;
+    const now = Date.now();
+    if (!force && jobsCache.length > 0 && (now - lastCacheUpdate < CACHE_DURATION)) {
+      return;
+    }
+
     try {
-      const isFull = req.query.full === 'true';
-      const jobs = await fetchLatestJobs(isFull);
-      res.json(jobs);
+      isUpdatingCache = true;
+      console.log('Refreshing jobs cache...');
+      const jobs = await fetchLatestJobs(true);
+      if (jobs && jobs.length > 0) {
+        jobsCache = jobs;
+        // Create summaries (exclude content for smaller payloads)
+        jobsSummaryCache = jobs.map(({ content, ...summary }) => summary);
+        lastCacheUpdate = Date.now();
+        console.log(`Cache updated with ${jobsCache.length} jobs.`);
+      }
     } catch (error) {
-      console.error('Error fetching jobs:', error);
-      res.status(500).json({ error: 'Failed to fetch jobs' });
+      console.error('Failed to update jobs cache:', error);
+    } finally {
+      isUpdatingCache = false;
+    }
+  };
+
+  // Initial fetch
+  refreshCache();
+  // Set interval for background updates
+  setInterval(refreshCache, CACHE_DURATION);
+
+  // API Route to fetch jobs
+  app.get('/api/jobs', (req, res) => {
+    const isFullRequested = req.query.full === 'true';
+    const jobId = req.query.id as string;
+
+    if (jobId) {
+      const job = jobsCache.find(j => j.id === jobId);
+      if (job) return res.json(job);
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (isFullRequested) {
+      res.json(jobsCache);
+    } else {
+      res.json(jobsSummaryCache);
     }
   });
 
@@ -38,13 +85,16 @@ async function startServer() {
     
     app.get('*', async (req, res) => {
       try {
-        let html = fs.readFileSync(path.join(distPath, 'index.html'), 'utf-8');
+        if (!cachedIndexHtml) {
+          cachedIndexHtml = fs.readFileSync(path.join(distPath, 'index.html'), 'utf-8');
+        }
+        
+        let html = cachedIndexHtml;
         const jobId = req.query.job as string;
         
         if (jobId) {
-          // Dynamic SEO for job landing pages
-          const jobs = await fetchLatestJobs(true);
-          const job = jobs.find(j => j.id === jobId);
+          // Use cached data for SEO instead of fresh fetch
+          const job = jobsCache.find(j => j.id === jobId);
           
           if (job) {
             const title = `${job.title} - ${job.organization}`;
@@ -69,7 +119,7 @@ async function startServer() {
           }
         }
         
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+        res.status(200).set({ 'Content-Type': 'text/html' }).set('Cache-Control', 'public, max-age=60').end(html);
       } catch (e) {
         console.error('Error serving index.html:', e);
         res.status(500).send('Internal Server Error');
