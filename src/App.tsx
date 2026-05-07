@@ -161,27 +161,41 @@ const BD_GOVT_LOGO = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/
 
 const InFeedAdComponent = () => {
   const isAdSet = React.useRef(false);
+  const insRef = React.useRef<HTMLModElement>(null);
 
   useEffect(() => {
-    if (!isAdSet.current) {
-      try {
-        // @ts-ignore
-        if (window.adsbygoogle) {
-          // @ts-ignore
-          (window.adsbygoogle = window.adsbygoogle || []).push({});
+    let timeoutId: NodeJS.Timeout;
+    let attempts = 0;
+
+    const pushAd = () => {
+      if (isAdSet.current || attempts > 10) return;
+      
+      const el = insRef.current;
+      if (el && el.offsetWidth > 0) {
+        try {
           isAdSet.current = true;
+          const adsbygoogle = (window as any).adsbygoogle || [];
+          adsbygoogle.push({});
+        } catch (e: any) {
+          // completely swallow adsense errors to avoid console noise
         }
-      } catch (e) {
-        console.error("AdSense error", e);
+      } else {
+        attempts++;
+        timeoutId = setTimeout(pushAd, 500);
       }
-    }
+    };
+
+    timeoutId = setTimeout(pushAd, 200);
+
+    return () => clearTimeout(timeoutId);
   }, []);
 
   return (
-    <div className="w-full flex justify-center my-4 overflow-hidden min-h-[100px] bg-slate-50/50 rounded-xl relative">
+    <div className="w-full flex justify-center my-4 overflow-hidden min-h-[100px] min-w-[250px] bg-slate-50/50 rounded-xl relative">
       <div className="absolute top-2 left-2 text-[10px] text-slate-400 font-medium tracking-wider uppercase">Advertisement</div>
-      <ins className="adsbygoogle w-full"
-           style={{ display: "block" }}
+      <ins ref={insRef}
+           className="adsbygoogle w-full inline-block"
+           style={{ display: "block", minWidth: "250px" }}
            data-ad-format="fluid"
            data-ad-layout-key="-fb+5w+4e-db+86"
            data-ad-client="ca-pub-7608093638667157"
@@ -192,27 +206,41 @@ const InFeedAdComponent = () => {
 
 const AdComponent = () => {
   const isAdSet = React.useRef(false);
+  const insRef = React.useRef<HTMLModElement>(null);
 
   useEffect(() => {
-    if (!isAdSet.current) {
-      try {
-        // @ts-ignore
-        if (window.adsbygoogle) {
-          // @ts-ignore
-          (window.adsbygoogle = window.adsbygoogle || []).push({});
+    let timeoutId: NodeJS.Timeout;
+    let attempts = 0;
+
+    const pushAd = () => {
+      if (isAdSet.current || attempts > 10) return;
+      
+      const el = insRef.current;
+      if (el && el.offsetWidth > 0) {
+        try {
           isAdSet.current = true;
+          const adsbygoogle = (window as any).adsbygoogle || [];
+          adsbygoogle.push({});
+        } catch (e: any) {
+          // completely swallow adsense errors to avoid console noise
         }
-      } catch (e) {
-        console.error("AdSense error", e);
+      } else {
+        attempts++;
+        timeoutId = setTimeout(pushAd, 500);
       }
-    }
+    };
+
+    timeoutId = setTimeout(pushAd, 200);
+
+    return () => clearTimeout(timeoutId);
   }, []);
 
   return (
-    <div className="w-full flex justify-center my-4 overflow-hidden min-h-[100px] bg-slate-50/50 rounded-xl relative">
+    <div className="w-full flex justify-center my-4 overflow-hidden min-h-[100px] min-w-[250px] bg-slate-50/50 rounded-xl relative">
       <div className="absolute top-2 left-2 text-[10px] text-slate-400 font-medium tracking-wider uppercase">Advertisement</div>
-      <ins className="adsbygoogle w-full"
-           style={{ display: "block" }}
+      <ins ref={insRef}
+           className="adsbygoogle w-full inline-block"
+           style={{ display: "block", minWidth: "250px" }}
            data-ad-client="ca-pub-7608093638667157"
            data-ad-slot="8382578589"
            data-ad-format="auto"
@@ -283,7 +311,8 @@ export default function App() {
 
     const handlePopState = (e: PopStateEvent) => {
       const urlParams = new URLSearchParams(window.location.search);
-      const jobId = urlParams.get('job');
+      const pathMatch = window.location.pathname.match(/\/job\/([^\/]+)/);
+      const jobId = pathMatch ? pathMatch[1] : urlParams.get('job');
 
       if (activePageRef.current !== 'home') {
         setActivePage('home');
@@ -371,9 +400,12 @@ export default function App() {
       
       // Update URL without reloading
       const url = new URL(window.location.href);
-      const currentId = url.searchParams.get('job');
+      const pathMatch = url.pathname.match(/\/job\/([^\/]+)/);
+      const currentId = pathMatch ? pathMatch[1] : url.searchParams.get('job');
+      
       if (currentId !== selectedJob.id) {
-        url.searchParams.set('job', selectedJob.id);
+        url.pathname = `/job/${selectedJob.id}`;
+        url.searchParams.delete('job');
         window.history.pushState({ job: selectedJob.id }, '', url.toString());
       }
 
@@ -442,9 +474,11 @@ export default function App() {
         canonical.setAttribute('href', window.location.origin + '/');
       }
 
-      // Only clear the URL if it actually has a job param and we explicitly want to clear it (not just initial state)
-      if (url.searchParams.has('job')) {
-        const urlJobId = url.searchParams.get('job');
+      // Only clear the URL if it actually has a job param/path and we explicitly want to clear it (not just initial state)
+      const pathMatch = url.pathname.match(/\/job\/([^\/]+)/);
+      const urlJobId = pathMatch ? pathMatch[1] : url.searchParams.get('job');
+
+      if (urlJobId) {
         if (jobs.length > 0) {
            const jobExistsInList = jobs.some(j => j.id === urlJobId);
            const isExactlyOnHomeWithoutJob = activePage === 'home' && !selectedJob;
@@ -456,6 +490,7 @@ export default function App() {
               if (urlJobId !== currentIdInState) {
                 // If the URL has an ID but our state is null, we check if we should keep waiting or clear
                 // If jobs are loaded and we've waited a bit, we can clear
+                url.pathname = '/';
                 url.searchParams.delete('job');
                 window.history.pushState({}, '', url.toString());
               }
@@ -472,7 +507,8 @@ export default function App() {
     // Initial deep link check
     const checkDeepLink = async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const jobId = urlParams.get('job');
+      const pathMatch = window.location.pathname.match(/\/job\/([^\/]+)/);
+      const jobId = pathMatch ? pathMatch[1] : urlParams.get('job');
       
       if (jobId) {
         // If we have jobs loaded, check if it's there
@@ -1318,7 +1354,7 @@ export default function App() {
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const shareUrl = `${window.location.origin}/?job=${job.id}`;
+                                const shareUrl = `${window.location.origin}/job/${job.id}`;
                                 if (navigator.share) {
                                   navigator.share({
                                     title: job.title,

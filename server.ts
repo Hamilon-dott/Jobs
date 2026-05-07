@@ -4,6 +4,7 @@ import path from 'path';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import https from 'https';
+import fs from 'fs';
 
 async function startServer() {
   const app = express();
@@ -23,22 +24,50 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
   app.get('/sitemap.xml', async (req, res) => {
     try {
       const jobs = await fetchLatestJobs(true);
-      const host = `${req.protocol}://${req.get('host')}`;
+      const host = req.get('host')?.includes('localhost') ? `${req.protocol}://${req.get('host')}` : 'https://jobs.talukdaracademy.com.bd';
+      
+      const escapeXml = (unsafe: string) => {
+        return unsafe.replace(/[<>&'"]/g, (c) => {
+          switch (c) {
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '&': return '&amp;';
+            case "'": return '&apos;';
+            case '"': return '&quot;';
+            default: return c;
+          }
+        });
+      };
       
       const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>${host}/</loc>
     <changefreq>always</changefreq>
     <priority>1.0</priority>
   </url>
-  ${jobs.map(job => `
+  ${jobs.map(job => {
+    let imageXml = '';
+    if (job.imageUrls && job.imageUrls.length > 0) {
+      const imgUrl = escapeXml(job.imageUrls[0]);
+      const title = escapeXml(job.title);
+      const _caption = escapeXml(job.organization || job.title);
+      imageXml = `
+    <image:image>
+      <image:loc>${imgUrl}</image:loc>
+      <image:title>${title}</image:title>
+      <image:caption>${title} - ${_caption}</image:caption>
+    </image:image>`;
+    }
+    
+    return `
   <url>
-    <loc>${host}/?job=${job.id}</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+    <loc>${host}/job/${job.id}</loc>
+    <lastmod>${new Date(job.publishedDate).toISOString().split('T')[0]}</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>`).join('')}
+    <priority>0.8</priority>${imageXml}
+  </url>`;
+  }).join('')}
 </urlset>`;
 
       res.type('application/xml');
@@ -67,12 +96,39 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
       server: { middlewareMode: true },
       appType: 'spa',
     });
+    
+    app.use((req, res, next) => {
+      // 301 Redirect old query params to new path structure
+      if (req.query.job) {
+        return res.redirect(301, `/job/${req.query.job}`);
+      }
+      next();
+    });
+    
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { index: false }));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      // 301 Redirect old query params to new path structure
+      if (req.query.job) {
+        return res.redirect(301, `/job/${req.query.job}`);
+      }
+      
+      fs.readFile(path.join(distPath, 'index.html'), 'utf8', (err, data) => {
+        if (err) {
+          return res.sendFile(path.join(distPath, 'index.html'));
+        }
+        const host = req.get('host')?.includes('localhost') ? `${req.protocol}://${req.get('host')}` : 'https://jobs.talukdaracademy.com.bd';
+        let canonicalUrl = host + req.path;
+        
+        let updatedHtml = data;
+        // Inject Canonical Tag
+        if (!data.includes('rel="canonical"')) {
+           updatedHtml = updatedHtml.replace('</head>', `  <link rel="canonical" href="${canonicalUrl}">\n  </head>`);
+        }
+        res.send(updatedHtml);
+      });
     });
   }
 
