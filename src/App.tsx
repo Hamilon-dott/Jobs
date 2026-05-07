@@ -416,7 +416,7 @@ export default function App() {
         canonical.setAttribute('rel', 'canonical');
         document.head.appendChild(canonical);
       }
-      canonical.setAttribute('href', url.toString());
+      canonical.setAttribute('href', url.origin + url.pathname);
 
       // JSON-LD for Google Jobs
       const existingScript = document.getElementById('job-jsonld');
