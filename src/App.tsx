@@ -450,6 +450,7 @@ export default function App() {
           "name": selectedJob.organization,
           "logo": BD_GOVT_LOGO
         },
+        "url": url.origin + url.pathname,
         "jobLocation": {
           "@type": "Place",
           "address": {
