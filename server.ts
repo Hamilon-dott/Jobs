@@ -127,10 +127,27 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
   <meta property="og:image" content="${job.imageUrls?.[0] || 'https://jobs.talukdaracademy.com.bd/default-job-image.png'}">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  <link rel="canonical" href="${canonicalUrl}">
 `;
               updatedHtml = updatedHtml.replace('</head>', `${metaTags}\n  </head>`);
               
+              const jsonLd = {
+                "@context": "https://schema.org/",
+                "@type": "JobPosting",
+                "title": cleanedTitle,
+                "description": pageDescription,
+                "datePosted": job.publishedDate,
+                "hiringOrganization": {
+                  "@type": "Organization",
+                  "name": cleanedOrg
+                },
+                "url": canonicalUrl
+              };
+              
               const staticContent = `
+                <script type="application/ld+json">
+                  ${JSON.stringify(jsonLd)}
+                </script>
                 <noscript>
                   <article itemscope itemtype="http://schema.org/JobPosting">
                     <h1 itemprop="title">${cleanedTitle}</h1>
@@ -149,11 +166,11 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
           } catch (e) {
             console.error('Failed to fetch job for SEO rendering:', e);
           }
+        } else {
+          // Homepage or other pages
+          updatedHtml = updatedHtml.replace(/<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/gi, '');
+          updatedHtml = updatedHtml.replace('</head>', `  <link rel="canonical" href="${canonicalUrl}">\n  </head>`);
         }
-        
-         // FIX: Remove any existing canonical tags and ensure correct one is added
-        updatedHtml = updatedHtml.replace(/<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/gi, '');
-        updatedHtml = updatedHtml.replace('</head>', `  <link rel="canonical" href="${canonicalUrl}">\n  </head>`);
         
         res.send(updatedHtml);
       });
