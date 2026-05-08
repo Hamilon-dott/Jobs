@@ -1291,14 +1291,18 @@ export default function App() {
                 ) : paginatedJobs.length > 0 ? (
                   paginatedJobs.flatMap((job, idx) => {
                     const elements = [
-                      <motion.div
+                      <motion.a
+                        href={`/job/${job.id}`}
                         layout
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: idx * 0.03 }}
                         key={job.id}
-                        onClick={() => setSelectedJob(job)}
-                        className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col md:flex-row md:items-center justify-between group hover:border-[#3b82f6]/50 hover:shadow-md transition-all duration-200 gap-3 cursor-pointer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setSelectedJob(job);
+                        }}
+                        className="bg-white text-left text-inherit block border border-[#e2e8f0] rounded-lg p-3 flex flex-col md:flex-row md:items-center justify-between group hover:border-[#3b82f6]/50 hover:shadow-md transition-all duration-200 gap-3 cursor-pointer"
                       >
                         <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">
                           <div className={cn(
@@ -1390,7 +1394,7 @@ export default function App() {
                             </div>
                           </div>
                         </div>
-                      </motion.div>
+                      </motion.a>
                     ];
                     if ((idx + 1) % 5 === 0) {
                       elements.push(<div key={`ad-${job.id}`}><InFeedAdComponent /></div>);
