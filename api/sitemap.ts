@@ -47,7 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   </url>
   ${jobIds.map(id => `
   <url>
-    <loc>${baseUrl}/?job=${id}</loc>
+    <loc>${baseUrl}/job/${id}</loc>
     <lastmod>${date}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
