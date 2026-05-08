@@ -119,11 +119,15 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
               
               // Add meta tags for better indexing
               const metaTags = `
-                <meta name="description" content="${pageDescription.replace(/"/g, '&quot;')}">
-                <meta property="og:title" content="${pageTitle}">
-                <meta property="og:description" content="${pageDescription.replace(/"/g, '&quot;')}">
-                <meta property="og:url" content="${canonicalUrl}">
-              `;
+  <meta name="description" content="${pageDescription.replace(/"/g, '&quot;')}">
+  <meta property="og:title" content="${pageTitle}">
+  <meta property="og:description" content="${pageDescription.replace(/"/g, '&quot;')}">
+  <meta property="og:url" content="${canonicalUrl}">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="${job.imageUrls?.[0] || 'https://jobs.talukdaracademy.com.bd/default-job-image.png'}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+`;
               updatedHtml = updatedHtml.replace('</head>', `${metaTags}\n  </head>`);
               
               const staticContent = `
