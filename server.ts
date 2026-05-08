@@ -147,10 +147,10 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
           }
         }
         
-        // Inject Canonical Tag
-        if (!updatedHtml.includes('rel="canonical"')) {
-           updatedHtml = updatedHtml.replace('</head>', `  <link rel="canonical" href="${canonicalUrl}">\n  </head>`);
-        }
+         // FIX: Remove any existing canonical tags and ensure correct one is added
+        updatedHtml = updatedHtml.replace(/<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/gi, '');
+        updatedHtml = updatedHtml.replace('</head>', `  <link rel="canonical" href="${canonicalUrl}">\n  </head>`);
+        
         res.send(updatedHtml);
       });
     });
