@@ -26,48 +26,20 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
       const jobs = await fetchLatestJobs(true);
       const host = req.get('host')?.includes('localhost') ? `${req.protocol}://${req.get('host')}` : 'https://jobs.talukdaracademy.com.bd';
       
-      const escapeXml = (unsafe: string) => {
-        return unsafe.replace(/[<>&'"]/g, (c) => {
-          switch (c) {
-            case '<': return '&lt;';
-            case '>': return '&gt;';
-            case '&': return '&amp;';
-            case "'": return '&apos;';
-            case '"': return '&quot;';
-            default: return c;
-          }
-        });
-      };
-      
       const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>${host}/</loc>
     <changefreq>always</changefreq>
     <priority>1.0</priority>
   </url>
-  ${jobs.map(job => {
-    let imageXml = '';
-    if (job.imageUrls && job.imageUrls.length > 0) {
-      const imgUrl = escapeXml(job.imageUrls[0]);
-      const title = escapeXml(job.title);
-      const _caption = escapeXml(job.organization || job.title);
-      imageXml = `
-    <image:image>
-      <image:loc>${imgUrl}</image:loc>
-      <image:title>${title}</image:title>
-      <image:caption>${title} - ${_caption}</image:caption>
-    </image:image>`;
-    }
-    
-    return `
+  ${jobs.map(job => `
   <url>
     <loc>${host}/job/${job.id}</loc>
     <lastmod>${new Date(job.publishedDate).toISOString().split('T')[0]}</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>${imageXml}
-  </url>`;
-  }).join('')}
+    <priority>0.8</priority>
+  </url>`).join('')}
 </urlset>`;
 
       res.type('application/xml');
@@ -109,13 +81,13 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath, { index: false }));
-    app.get('*', (req, res) => {
+    app.get('*', async (req, res) => {
       // 301 Redirect old query params to new path structure
       if (req.query.job) {
         return res.redirect(301, `/job/${req.query.job}`);
       }
       
-      fs.readFile(path.join(distPath, 'index.html'), 'utf8', (err, data) => {
+      fs.readFile(path.join(distPath, 'index.html'), 'utf8', async (err, data) => {
         if (err) {
           return res.sendFile(path.join(distPath, 'index.html'));
         }
@@ -123,8 +95,60 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
         let canonicalUrl = host + req.path;
         
         let updatedHtml = data;
+        let pageTitle = "Jobs.talukdaracademy.com.bd - BD Govt Job Circular 2026";
+        let pageDescription = "Find the latest Govt and Bank jobs in Bangladesh.";
+        
+        // Handle specific job pages
+        const jobMatch = req.path.match(/^\/job\/([^/]+)/);
+        if (jobMatch) {
+          const jobId = jobMatch[1];
+          try {
+            const jobs = await fetchLatestJobs(true);
+            const job = jobs.find(j => j.id === jobId);
+            if (job) {
+              const cleanedTitle = job.title.replace(/[<>&'"]/g, '');
+              const cleanedOrg = (job.organization || '').replace(/[<>&'"]/g, '');
+              pageTitle = `${cleanedTitle} - ${cleanedOrg}`;
+              
+              // Extract a short description from content
+              const noHtmlContent = job.content.replace(/<[^>]*>?/gm, '');
+              pageDescription = noHtmlContent.length > 150 ? noHtmlContent.substring(0, 150) + '...' : noHtmlContent;
+              
+              // Replace generic title
+              updatedHtml = updatedHtml.replace(/<title>.*?<\/title>/i, `<title>${pageTitle}</title>`);
+              
+              // Add meta tags for better indexing
+              const metaTags = `
+                <meta name="description" content="${pageDescription.replace(/"/g, '&quot;')}">
+                <meta property="og:title" content="${pageTitle}">
+                <meta property="og:description" content="${pageDescription.replace(/"/g, '&quot;')}">
+                <meta property="og:url" content="${canonicalUrl}">
+              `;
+              updatedHtml = updatedHtml.replace('</head>', `${metaTags}\n  </head>`);
+              
+              const staticContent = `
+                <noscript>
+                  <article itemscope itemtype="http://schema.org/JobPosting">
+                    <h1 itemprop="title">${cleanedTitle}</h1>
+                    <h2 itemprop="hiringOrganization">${cleanedOrg}</h2>
+                    <p itemprop="datePosted">${job.publishedDate}</p>
+                    <div itemprop="description">${job.content}</div>
+                  </article>
+                </noscript>
+              `;
+              if (updatedHtml.includes('<div id="root"></div>')) {
+                updatedHtml = updatedHtml.replace('<div id="root"></div>', `<div id="root">${staticContent}</div>`);
+              } else {
+                updatedHtml = updatedHtml.replace('<body>', `<body>\n${staticContent}`);
+              }
+            }
+          } catch (e) {
+            console.error('Failed to fetch job for SEO rendering:', e);
+          }
+        }
+        
         // Inject Canonical Tag
-        if (!data.includes('rel="canonical"')) {
+        if (!updatedHtml.includes('rel="canonical"')) {
            updatedHtml = updatedHtml.replace('</head>', `  <link rel="canonical" href="${canonicalUrl}">\n  </head>`);
         }
         res.send(updatedHtml);
@@ -141,7 +165,24 @@ const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
 
+let cachedJobsFull: any[] | null = null;
+let lastFetchFull: number = 0;
+let cachedJobsBrief: any[] | null = null;
+let lastFetchBrief: number = 0;
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 async function fetchLatestJobs(isFull: boolean = false) {
+  const now = Date.now();
+  if (isFull) {
+    if (cachedJobsFull && now - lastFetchFull < CACHE_TTL) {
+      return cachedJobsFull;
+    }
+  } else {
+    if (cachedJobsBrief && now - lastFetchBrief < CACHE_TTL) {
+      return cachedJobsBrief;
+    }
+  }
+
   const jobs: any[] = [];
   
   // Helper to parse Bengali/English deadline strings
@@ -381,7 +422,15 @@ async function fetchLatestJobs(isFull: boolean = false) {
   }
 
   if (jobs.length > 0) {
-    return jobs.sort((a, b) => new Date(b.publishedDate).getTime() - new Date(a.publishedDate).getTime());
+    const result = jobs.sort((a, b) => new Date(b.publishedDate).getTime() - new Date(a.publishedDate).getTime());
+    if (isFull) {
+      cachedJobsFull = result;
+      lastFetchFull = Date.now();
+    } else {
+      cachedJobsBrief = result;
+      lastFetchBrief = Date.now();
+    }
+    return result;
   }
 
   // Final fallback to RSS if all Direct APIs failed
@@ -406,14 +455,22 @@ async function fetchLatestJobs(isFull: boolean = false) {
           imageUrls: [item.thumbnail || item.enclosure?.link || null].filter(Boolean)
         });
       });
-      return jobs.sort((a, b) => new Date(b.publishedDate).getTime() - new Date(a.publishedDate).getTime());
+      const result = jobs.sort((a, b) => new Date(b.publishedDate).getTime() - new Date(a.publishedDate).getTime());
+      if (isFull) {
+        cachedJobsFull = result;
+        lastFetchFull = Date.now();
+      } else {
+        cachedJobsBrief = result;
+        lastFetchBrief = Date.now();
+      }
+      return result;
     }
   } catch (e: any) {
     console.error('RSS fallback failed:', e.message);
   }
 
   const todayDate = new Date().toISOString();
-  return [
+  const fallbackResult = [
     {
       id: "f1",
       title: "Assistant Director (General) - 100 Posts",
@@ -426,6 +483,14 @@ async function fetchLatestJobs(isFull: boolean = false) {
       content: "Official recruitment for Assistant Director positions at Bangladesh Bank."
     }
   ];
+  if (isFull) {
+    cachedJobsFull = fallbackResult;
+    lastFetchFull = Date.now();
+  } else {
+    cachedJobsBrief = fallbackResult;
+    lastFetchBrief = Date.now();
+  }
+  return fallbackResult;
 }
 
 function getFallbackJobs() {
