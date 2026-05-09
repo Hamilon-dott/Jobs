@@ -6,16 +6,32 @@ const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
 
+import * as cheerio from 'cheerio';
+
 // Slug generation function
-function generateSlug(title: string): string {
-  if (!title) return '';
-  return title
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Replace multiple hyphens with single
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+function generateSlug(title: string, orgName?: string | null, fallbackId?: string): string {
+  const extractEnglish = (text?: string | null) => {
+    if (!text) return '';
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '') // Keep words in English language, numbers, spaces, hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+  };
+
+  let slug = extractEnglish(title);
+  if (!slug || slug.length < 3) {
+    if (orgName) {
+      const orgSlug = extractEnglish(orgName);
+      if (orgSlug && orgSlug.length >= 2) {
+        slug = `${orgSlug}-job-circular`;
+      }
+    }
+  }
+
+  return slug || fallbackId || '';
 }
 
 async function fetchJobSlugs() {
@@ -33,9 +49,17 @@ async function fetchJobSlugs() {
       if (Array.isArray(response.data)) {
         response.data.forEach((post: any) => {
           let titleText = post.title?.rendered || '';
-          // Remove HTML entities like &#8211;
           titleText = titleText.replace(/&#[0-9]+;/g, '-').replace(/<[^>]+>/g, '').trim();
-          slugs.push(generateSlug(titleText) || post.id.toString());
+          
+          let orgName = '';
+          if (post.content?.rendered) {
+            const $ = cheerio.load(post.content.rendered);
+            const text = $.text();
+            const orgMatch = text.match(/প্রতিষ্ঠানের নাম\s*[:ঃ]?\s*([^\n]+)/i);
+            orgName = orgMatch ? orgMatch[1].trim() : '';
+          }
+          
+          slugs.push(generateSlug(titleText, orgName, post.id.toString()));
         });
       } else {
         break;

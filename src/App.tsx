@@ -44,15 +44,29 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // Slug generation function
-function generateSlug(title: string): string {
-  if (!title) return '';
-  return title
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Replace multiple hyphens with single
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+function generateSlug(title: string, orgName?: string | null, fallbackId?: string): string {
+  const extractEnglish = (text?: string | null) => {
+    if (!text) return '';
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '') // Keep words in English language, numbers, spaces, hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+  };
+
+  let slug = extractEnglish(title);
+  if (!slug || slug.length < 3) {
+    if (orgName) {
+      const orgSlug = extractEnglish(orgName);
+      if (orgSlug && orgSlug.length >= 2) {
+        slug = `${orgSlug}-job-circular`;
+      }
+    }
+  }
+
+  return slug || fallbackId || '';
 }
 
 interface Job {
@@ -332,7 +346,7 @@ export default function App() {
       } else if (selectedJobRef.current && !jobId) {
         setSelectedJob(null);
       } else if (jobId && jobsRef.current.length > 0) {
-        const job = jobsRef.current.find(j => j.id === jobId || j.slug === jobId || generateSlug(j.title) === jobId);
+        const job = jobsRef.current.find(j => j.id === jobId || j.slug === jobId || generateSlug(j.title, j.organization) === jobId);
         if (job) setSelectedJob(job);
       } else if (!showExitConfirmRef.current && !selectedJobRef.current) {
         // Only show exit confirm if we're at the root and moving back
@@ -416,7 +430,7 @@ export default function App() {
       const pathMatch = url.pathname.match(/^\/([^/]+)$/);
       const currentId = pathMatch ? pathMatch[1] : url.searchParams.get('job');
       
-      const jobSlug = selectedJob.slug || generateSlug(selectedJob.title);
+      const jobSlug = selectedJob.slug || generateSlug(selectedJob.title, selectedJob.organization);
       if (currentId !== selectedJob.id && currentId !== jobSlug) {
         url.pathname = `/${jobSlug}`;
         url.searchParams.delete('job');
@@ -495,7 +509,7 @@ export default function App() {
 
       if (urlJobId) {
         if (jobs.length > 0) {
-           const jobExistsInList = jobs.some(j => j.id === urlJobId || j.slug === urlJobId || generateSlug(j.title) === urlJobId);
+           const jobExistsInList = jobs.some(j => j.id === urlJobId || j.slug === urlJobId || generateSlug(j.title, j.organization) === urlJobId);
            const isExactlyOnHomeWithoutJob = activePage === 'home' && !selectedJob;
            
            // Only clear if it's not in the list AND we've potentially already tried direct fetching
@@ -528,7 +542,7 @@ export default function App() {
       if (jobId) {
         // If we have jobs loaded, check if it's there
         if (jobs.length > 0) {
-          const job = jobs.find(j => j.id === jobId || j.slug === jobId || generateSlug(j.title) === jobId);
+          const job = jobs.find(j => j.id === jobId || j.slug === jobId || generateSlug(j.title, j.organization) === jobId);
           if (job) {
              if (activePage === 'home') setSelectedJob(job);
           } else {
@@ -1306,7 +1320,7 @@ export default function App() {
                   paginatedJobs.flatMap((job, idx) => {
                     const elements = [
                       <motion.a
-                        href={`/${job.slug || generateSlug(job.title)}`}
+                        href={`/${job.slug || generateSlug(job.title, job.organization)}`}
                         layout
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -1373,7 +1387,7 @@ export default function App() {
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const shareUrl = `${window.location.origin}/${job.slug || generateSlug(job.title)}`;
+                                const shareUrl = `${window.location.origin}/${job.slug || generateSlug(job.title, job.organization)}`;
                                 if (navigator.share) {
                                   navigator.share({
                                     title: job.title,

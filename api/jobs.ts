@@ -7,6 +7,32 @@ const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
 
+// Slug generation function
+function generateSlug(title: string, orgName?: string | null, fallbackId?: string): string {
+  const extractEnglish = (text?: string | null) => {
+    if (!text) return '';
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '') // Keep words in English language, numbers, spaces, hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+  };
+
+  let slug = extractEnglish(title);
+  if (!slug || slug.length < 3) {
+    if (orgName) {
+      const orgSlug = extractEnglish(orgName);
+      if (orgSlug && orgSlug.length >= 2) {
+        slug = `${orgSlug}-job-circular`;
+      }
+    }
+  }
+
+  return slug || fallbackId || '';
+}
+
 async function fetchLatestJobs(isFull: boolean = false) {
   const jobs: any[] = [];
   
@@ -218,6 +244,7 @@ async function fetchLatestJobs(isFull: boolean = false) {
               const pubDate = new Date(post.date);
               jobs.push({
                 id: `${post.id}`,
+                slug: generateSlug(titleText, orgName, `${post.id}`),
                 title: titleText,
                 organization: orgName,
                 publishedDate: pubDate.toISOString(), // Standard ISO format
@@ -337,6 +364,7 @@ async function fetchSingleJob(id: string) {
 
     return {
       id: `${post.id}`,
+      slug: generateSlug(titleText, title.split(/Job|Circular|নিয়োগ|বিজ্ঞপ্তি/i)[0].trim(), `${post.id}`),
       title: titleText,
       organization: title.split(/Job|Circular|নিয়োগ|বিজ্ঞপ্তি/i)[0].trim() || "Job Circular",
       publishedDate: new Date(post.date).toISOString(),

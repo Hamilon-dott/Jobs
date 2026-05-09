@@ -7,15 +7,29 @@ import https from 'https';
 import fs from 'fs';
 
 // Slug generation function
-function generateSlug(title: string): string {
-  if (!title) return '';
-  return title
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Replace multiple hyphens with single
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+function generateSlug(title: string, orgName?: string | null, fallbackId?: string): string {
+  const extractEnglish = (text?: string | null) => {
+    if (!text) return '';
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '') // Keep words in English language, numbers, spaces, hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+  };
+
+  let slug = extractEnglish(title);
+  if (!slug || slug.length < 3) {
+    if (orgName) {
+      const orgSlug = extractEnglish(orgName);
+      if (orgSlug && orgSlug.length >= 2) {
+        slug = `${orgSlug}-job-circular`;
+      }
+    }
+  }
+
+  return slug || fallbackId || '';
 }
 
 async function startServer() {
@@ -47,7 +61,7 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
   </url>
   ${jobs.map(job => `
   <url>
-    <loc>${host}/${job.slug || generateSlug(job.title)}</loc>
+    <loc>${host}/${job.slug || generateSlug(job.title, job.organization)}</loc>
     <lastmod>${new Date(job.publishedDate).toISOString().split('T')[0]}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -116,7 +130,7 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
           const jobSlug = jobMatch[1];
           try {
             const jobs = await fetchLatestJobs(true);
-            const job = jobs.find(j => (j.slug === jobSlug) || (j.id === jobSlug) || (generateSlug(j.title) === jobSlug));
+            const job = jobs.find(j => (j.slug === jobSlug) || (j.id === jobSlug) || (generateSlug(j.title, j.organization) === jobSlug));
             if (job) {
               const cleanedTitle = job.title.replace(/[<>&'"]/g, '');
               const cleanedOrg = (job.organization || '').replace(/[<>&'"]/g, '');
@@ -426,7 +440,7 @@ async function fetchLatestJobs(isFull: boolean = false) {
               const pubDate = new Date(post.date);
               jobs.push({
                 id: `${post.id}`,
-                slug: generateSlug(titleText),
+                slug: generateSlug(titleText, orgName, `${post.id}`),
                 title: titleText,
                 organization: orgName,
                 publishedDate: pubDate.toISOString(), // Standard ISO format
@@ -478,7 +492,7 @@ async function fetchLatestJobs(isFull: boolean = false) {
         const pubDate = new Date(item.pubDate);
         jobs.push({
           id: `rss-${i}`,
-          slug: generateSlug(item.title.replace(/&#8211;/g, '-').replace(/&#8217;/g, "'")),
+          slug: generateSlug(item.title.replace(/&#8211;/g, '-').replace(/&#8217;/g, "'"), "Job Circular", `rss-${i}`),
           title: item.title.replace(/&#8211;/g, '-').replace(/&#8217;/g, "'"),
           organization: "Job Circular",
           publishedDate: pubDate.toISOString(),
