@@ -6,6 +6,18 @@ import * as cheerio from 'cheerio';
 import https from 'https';
 import fs from 'fs';
 
+// Slug generation function
+function generateSlug(title: string): string {
+  if (!title) return '';
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Replace multiple hyphens with single
+    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -35,7 +47,7 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
   </url>
   ${jobs.map(job => `
   <url>
-    <loc>${host}/job/${job.id}</loc>
+    <loc>${host}/${job.slug || generateSlug(job.title)}</loc>
     <lastmod>${new Date(job.publishedDate).toISOString().split('T')[0]}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -72,7 +84,7 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
     app.use((req, res, next) => {
       // 301 Redirect old query params to new path structure
       if (req.query.job) {
-        return res.redirect(301, `/job/${req.query.job}`);
+        return res.redirect(301, `/${req.query.job}`);
       }
       next();
     });
@@ -84,7 +96,7 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
     app.get('*', async (req, res) => {
       // 301 Redirect old query params to new path structure
       if (req.query.job) {
-        return res.redirect(301, `/job/${req.query.job}`);
+        return res.redirect(301, `/${req.query.job}`);
       }
       
       fs.readFile(path.join(distPath, 'index.html'), 'utf8', async (err, data) => {
@@ -99,12 +111,12 @@ Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
         let pageDescription = "Find the latest Govt and Bank jobs in Bangladesh.";
         
         // Handle specific job pages
-        const jobMatch = req.path.match(/^\/job\/([^/]+)/);
+        const jobMatch = req.path.match(/^\/([^/]+)$/);
         if (jobMatch) {
-          const jobId = jobMatch[1];
+          const jobSlug = jobMatch[1];
           try {
             const jobs = await fetchLatestJobs(true);
-            const job = jobs.find(j => j.id === jobId);
+            const job = jobs.find(j => (j.slug === jobSlug) || (j.id === jobSlug) || (generateSlug(j.title) === jobSlug));
             if (job) {
               const cleanedTitle = job.title.replace(/[<>&'"]/g, '');
               const cleanedOrg = (job.organization || '').replace(/[<>&'"]/g, '');
@@ -414,6 +426,7 @@ async function fetchLatestJobs(isFull: boolean = false) {
               const pubDate = new Date(post.date);
               jobs.push({
                 id: `${post.id}`,
+                slug: generateSlug(titleText),
                 title: titleText,
                 organization: orgName,
                 publishedDate: pubDate.toISOString(), // Standard ISO format
@@ -465,6 +478,7 @@ async function fetchLatestJobs(isFull: boolean = false) {
         const pubDate = new Date(item.pubDate);
         jobs.push({
           id: `rss-${i}`,
+          slug: generateSlug(item.title.replace(/&#8211;/g, '-').replace(/&#8217;/g, "'")),
           title: item.title.replace(/&#8211;/g, '-').replace(/&#8217;/g, "'"),
           organization: "Job Circular",
           publishedDate: pubDate.toISOString(),
@@ -494,6 +508,7 @@ async function fetchLatestJobs(isFull: boolean = false) {
   const fallbackResult = [
     {
       id: "f1",
+      slug: generateSlug("Assistant Director (General) - 100 Posts"),
       title: "Assistant Director (General) - 100 Posts",
       organization: "Bangladesh Bank",
       publishedDate: todayDate,
@@ -519,6 +534,7 @@ function getFallbackJobs() {
   return [
     {
       id: "f1",
+      slug: generateSlug("Assistant Director (General) - 100 Posts"),
       title: "Assistant Director (General) - 100 Posts",
       organization: "Bangladesh Bank",
       publishedDate: today,
@@ -529,6 +545,7 @@ function getFallbackJobs() {
     },
     {
       id: "f2",
+      slug: generateSlug("Senior Officer (Circular No. 2026/04)"),
       title: "Senior Officer (Circular No. 2026/04)",
       organization: "Sonali Bank PLC",
       publishedDate: today,
@@ -539,6 +556,7 @@ function getFallbackJobs() {
     },
     {
       id: "f3",
+      slug: generateSlug("Railway Assistant Station Master"),
       title: "Railway Assistant Station Master",
       organization: "Bangladesh Railway",
       publishedDate: today,

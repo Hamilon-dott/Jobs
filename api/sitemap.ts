@@ -6,8 +6,20 @@ const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
 
-async function fetchJobIds() {
-  const allIds: any[] = [];
+// Slug generation function
+function generateSlug(title: string): string {
+  if (!title) return '';
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Replace multiple hyphens with single
+    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+}
+
+async function fetchJobSlugs() {
+  const slugs: string[] = [];
   try {
     // Fetch top 2 pages (200 jobs) to keep it fast and reliable
     for (let page = 1; page <= 2; page++) {
@@ -19,7 +31,12 @@ async function fetchJobIds() {
         }
       });
       if (Array.isArray(response.data)) {
-        response.data.forEach((post: any) => allIds.push(post.id));
+        response.data.forEach((post: any) => {
+          let titleText = post.title?.rendered || '';
+          // Remove HTML entities like &#8211;
+          titleText = titleText.replace(/&#[0-9]+;/g, '-').replace(/<[^>]+>/g, '').trim();
+          slugs.push(generateSlug(titleText) || post.id.toString());
+        });
       } else {
         break;
       }
@@ -27,7 +44,7 @@ async function fetchJobIds() {
   } catch (e) {
     console.error('Sitemap fetch failed', e);
   }
-  return allIds;
+  return slugs;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -35,7 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const protocol = req.headers['x-forwarded-proto'] || 'https';
   const baseUrl = `${protocol}://${host}`;
   
-  const jobIds = await fetchJobIds();
+  const jobSlugs = await fetchJobSlugs();
   const date = new Date().toISOString().split('T')[0];
 
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
@@ -45,9 +62,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     <changefreq>always</changefreq>
     <priority>1.0</priority>
   </url>
-  ${jobIds.map(id => `
+  ${jobSlugs.map(slug => `
   <url>
-    <loc>${baseUrl}/job/${id}</loc>
+    <loc>${baseUrl}/${slug}</loc>
     <lastmod>${date}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>

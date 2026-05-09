@@ -43,8 +43,21 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Slug generation function
+function generateSlug(title: string): string {
+  if (!title) return '';
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Replace multiple hyphens with single
+    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+}
+
 interface Job {
   id: string;
+  slug?: string;
   title: string;
   organization: string;
   publishedDate: string;
@@ -311,7 +324,7 @@ export default function App() {
 
     const handlePopState = (e: PopStateEvent) => {
       const urlParams = new URLSearchParams(window.location.search);
-      const pathMatch = window.location.pathname.match(/\/job\/([^\/]+)/);
+      const pathMatch = window.location.pathname.match(/^\/([^/]+)$/);
       const jobId = pathMatch ? pathMatch[1] : urlParams.get('job');
 
       if (activePageRef.current !== 'home') {
@@ -319,7 +332,7 @@ export default function App() {
       } else if (selectedJobRef.current && !jobId) {
         setSelectedJob(null);
       } else if (jobId && jobsRef.current.length > 0) {
-        const job = jobsRef.current.find(j => j.id === jobId);
+        const job = jobsRef.current.find(j => j.id === jobId || j.slug === jobId || generateSlug(j.title) === jobId);
         if (job) setSelectedJob(job);
       } else if (!showExitConfirmRef.current && !selectedJobRef.current) {
         // Only show exit confirm if we're at the root and moving back
@@ -400,11 +413,12 @@ export default function App() {
       
       // Update URL without reloading
       const url = new URL(window.location.href);
-      const pathMatch = url.pathname.match(/\/job\/([^\/]+)/);
+      const pathMatch = url.pathname.match(/^\/([^/]+)$/);
       const currentId = pathMatch ? pathMatch[1] : url.searchParams.get('job');
       
-      if (currentId !== selectedJob.id) {
-        url.pathname = `/job/${selectedJob.id}`;
+      const jobSlug = selectedJob.slug || generateSlug(selectedJob.title);
+      if (currentId !== selectedJob.id && currentId !== jobSlug) {
+        url.pathname = `/${jobSlug}`;
         url.searchParams.delete('job');
         window.history.pushState({ job: selectedJob.id }, '', url.toString());
       }
@@ -476,12 +490,12 @@ export default function App() {
       }
 
       // Only clear the URL if it actually has a job param/path and we explicitly want to clear it (not just initial state)
-      const pathMatch = url.pathname.match(/\/job\/([^\/]+)/);
+      const pathMatch = url.pathname.match(/^\/([^/]+)$/);
       const urlJobId = pathMatch ? pathMatch[1] : url.searchParams.get('job');
 
       if (urlJobId) {
         if (jobs.length > 0) {
-           const jobExistsInList = jobs.some(j => j.id === urlJobId);
+           const jobExistsInList = jobs.some(j => j.id === urlJobId || j.slug === urlJobId || generateSlug(j.title) === urlJobId);
            const isExactlyOnHomeWithoutJob = activePage === 'home' && !selectedJob;
            
            // Only clear if it's not in the list AND we've potentially already tried direct fetching
@@ -508,13 +522,13 @@ export default function App() {
     // Initial deep link check
     const checkDeepLink = async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const pathMatch = window.location.pathname.match(/\/job\/([^\/]+)/);
+      const pathMatch = window.location.pathname.match(/^\/([^/]+)$/);
       const jobId = pathMatch ? pathMatch[1] : urlParams.get('job');
       
       if (jobId) {
         // If we have jobs loaded, check if it's there
         if (jobs.length > 0) {
-          const job = jobs.find(j => j.id === jobId);
+          const job = jobs.find(j => j.id === jobId || j.slug === jobId || generateSlug(j.title) === jobId);
           if (job) {
              if (activePage === 'home') setSelectedJob(job);
           } else {
@@ -1292,7 +1306,7 @@ export default function App() {
                   paginatedJobs.flatMap((job, idx) => {
                     const elements = [
                       <motion.a
-                        href={`/job/${job.id}`}
+                        href={`/${job.slug || generateSlug(job.title)}`}
                         layout
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -1359,7 +1373,7 @@ export default function App() {
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const shareUrl = `${window.location.origin}/job/${job.id}`;
+                                const shareUrl = `${window.location.origin}/${job.slug || generateSlug(job.title)}`;
                                 if (navigator.share) {
                                   navigator.share({
                                     title: job.title,
