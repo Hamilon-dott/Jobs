@@ -244,7 +244,7 @@ async function fetchLatestJobs(isFull: boolean = false) {
               const pubDate = new Date(post.date);
               jobs.push({
                 id: `${post.id}`,
-                slug: generateSlug(titleText, orgName, `${post.id}`),
+                slug: generateSlug(titleText, orgName, post.slug ? post.slug.toString() : `${post.id}`),
                 title: titleText,
                 organization: orgName,
                 publishedDate: pubDate.toISOString(), // Standard ISO format
@@ -364,7 +364,7 @@ async function fetchSingleJob(id: string) {
 
     return {
       id: `${post.id}`,
-      slug: generateSlug(titleText, title.split(/Job|Circular|নিয়োগ|বিজ্ঞপ্তি/i)[0].trim(), `${post.id}`),
+      slug: generateSlug(titleText, title.split(/Job|Circular|নিয়োগ|বিজ্ঞপ্তি/i)[0].trim(), post.slug ? post.slug.toString() : `${post.id}`),
       title: titleText,
       organization: title.split(/Job|Circular|নিয়োগ|বিজ্ঞপ্তি/i)[0].trim() || "Job Circular",
       publishedDate: new Date(post.date).toISOString(),

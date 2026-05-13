@@ -59,7 +59,7 @@ async function fetchJobSlugs() {
             orgName = orgMatch ? orgMatch[1].trim() : '';
           }
           
-          slugs.push(generateSlug(titleText, orgName, post.id.toString()));
+          slugs.push(generateSlug(titleText, orgName, post.slug || post.id.toString()));
         });
       } else {
         break;
@@ -72,9 +72,9 @@ async function fetchJobSlugs() {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const host = req.headers.host || 'jobs.example.com';
+  const isLocalhost = (req.headers.host || '').includes('localhost');
   const protocol = req.headers['x-forwarded-proto'] || 'https';
-  const baseUrl = `${protocol}://${host}`;
+  const baseUrl = isLocalhost ? `${protocol}://${req.headers.host}` : 'https://jobs.talukdaracademy.com.bd';
   
   const jobSlugs = await fetchJobSlugs();
   const date = new Date().toISOString().split('T')[0];

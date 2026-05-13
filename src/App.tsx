@@ -438,13 +438,14 @@ export default function App() {
       }
 
       // Add/Update Canonical Link
+      const domain = window.location.hostname.includes('localhost') ? window.location.origin : 'https://jobs.talukdaracademy.com.bd';
       let canonical = document.querySelector('link[rel="canonical"]');
       if (!canonical) {
         canonical = document.createElement('link');
         canonical.setAttribute('rel', 'canonical');
         document.head.appendChild(canonical);
       }
-      canonical.setAttribute('href', url.origin + url.pathname);
+      canonical.setAttribute('href', domain + (url.pathname === '/' ? '' : url.pathname));
 
       // JSON-LD for Google Jobs
       const existingScript = document.getElementById('job-jsonld');
@@ -478,7 +479,7 @@ export default function App() {
           "name": selectedJob.organization,
           "logo": BD_GOVT_LOGO
         },
-        "url": url.origin + url.pathname,
+        "url": domain + url.pathname,
         "jobLocation": {
           "@type": "Place",
           "address": {
@@ -498,9 +499,10 @@ export default function App() {
       const url = new URL(window.location.href);
       
       // Reset Canonical Link to Home
+      const domain = window.location.hostname.includes('localhost') ? window.location.origin : 'https://jobs.talukdaracademy.com.bd';
       let canonical = document.querySelector('link[rel="canonical"]');
       if (canonical) {
-        canonical.setAttribute('href', window.location.origin + '/');
+        canonical.setAttribute('href', domain);
       }
 
       // Only clear the URL if it actually has a job param/path and we explicitly want to clear it (not just initial state)

@@ -40,10 +40,12 @@ async function startServer() {
 
   // Robots.txt
   app.get('/robots.txt', (req, res) => {
+    const isLocalhost = (req.get('host') || '').includes('localhost');
+    const baseUrl = isLocalhost ? `${req.protocol}://${req.get('host')}` : 'https://jobs.talukdaracademy.com.bd';
     res.type('text/plain');
     res.send(`User-agent: *
 Allow: /
-Sitemap: ${req.protocol}://${req.get('host')}/sitemap.xml`);
+Sitemap: ${baseUrl}/sitemap.xml`);
   });
 
   // Sitemap.xml
