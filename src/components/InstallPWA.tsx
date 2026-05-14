@@ -3,8 +3,13 @@ import { Download } from 'lucide-react';
 
 export default function InstallPWA() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    if (window.matchMedia('(display-mode: standalone)').matches || ('standalone' in navigator && (navigator as any).standalone)) {
+      setIsStandalone(true);
+    }
+
     const handleBeforeInstallPrompt = (e: Event) => {
       // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
@@ -20,21 +25,22 @@ export default function InstallPWA() {
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) {
-      return;
+    if (deferredPrompt) {
+      // Show the install prompt
+      deferredPrompt.prompt();
+      // Wait for the user to respond to the prompt
+      const { outcome } = await deferredPrompt.userChoice;
+      // Optionally, send analytics event with outcome of user choice
+      console.log(`User response to the install prompt: ${outcome}`);
+      // We've used the prompt, and can't use it again, throw it away
+      setDeferredPrompt(null);
+    } else {
+        alert("To install the app:\n\n• For Android Chrome: Tap the 3-dot menu and select 'Install app' or 'Add to Home screen'.\n• For iOS Safari: Tap the Share button and select 'Add to Home Screen'.");
     }
-    // Show the install prompt
-    deferredPrompt.prompt();
-    // Wait for the user to respond to the prompt
-    const { outcome } = await deferredPrompt.userChoice;
-    // Optionally, send analytics event with outcome of user choice
-    console.log(`User response to the install prompt: ${outcome}`);
-    // We've used the prompt, and can't use it again, throw it away
-    setDeferredPrompt(null);
   };
 
-  if (!deferredPrompt) {
-    return null; // Don't render the button if the prompt isn't available
+  if (isStandalone) {
+    return null; // Don't render the button if already installed
   }
 
   return (
