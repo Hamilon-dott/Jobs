@@ -295,6 +295,7 @@ export default function App() {
   const [activePage, setActivePage] = useState<'home' | 'privacy' | 'terms' | 'contact'>('home');
   const [jobSummaries, setJobSummaries] = useState<Record<string, { text: string; loading: boolean; error?: string }>>({});
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [newJobsRefreshList, setNewJobsRefreshList] = useState<Job[] | null>(null);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -746,6 +747,8 @@ export default function App() {
 
     let hasCachedData = false;
 
+    let shouldSkipFullFetch = false;
+
     // Stage 0: Priority Cache Load
     try {
       const cached = localStorage.getItem(CACHE_KEY);
@@ -758,12 +761,9 @@ export default function App() {
           setLoading(false);
           hasCachedData = true;
           
-          // If the cache is very fresh (less than 2 mins), we might skip the aggressive re-fetch
-          // but for now, we'll always re-fetch in background to satisfy the user's need for new data.
           const now = Date.now();
           if (now - lastSyncTime < 2 * 60 * 1000) {
-            setIsFullLoading(false);
-            return; 
+            shouldSkipFullFetch = true;
           }
         }
       }
@@ -783,8 +783,18 @@ export default function App() {
       const response = await axios.get(`/api/jobs?t=${timestamp}`);
       const data = response.data;
       if (Array.isArray(data) && data.length > 0) {
-        setJobs(data);
-        if (loading) setLoading(false);
+        if (hasCachedData) {
+          const existingIds = new Set(jobsRef.current.map(j => j.id));
+          const hasNew = data.some(j => !existingIds.has(j.id));
+          if (hasNew && jobsRef.current.length > 0) {
+            setNewJobsRefreshList(data);
+          } else {
+            setJobs(data);
+          }
+        } else {
+          setJobs(data);
+          if (loading) setLoading(false);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
@@ -794,12 +804,27 @@ export default function App() {
       }
     }
 
+    if (shouldSkipFullFetch) {
+      setIsFullLoading(false);
+      return;
+    }
+
     // Stage 2: Background Full Load
     try {
       const fullResponse = await axios.get(`/api/jobs?full=true&t=${timestamp}`);
       const fullData = fullResponse.data;
       if (Array.isArray(fullData) && fullData.length > 0) {
-        setJobs(fullData);
+        if (hasCachedData) {
+          const existingIds = new Set(jobsRef.current.map(j => j.id));
+          const hasNew = fullData.some(j => !existingIds.has(j.id));
+          if (hasNew && jobsRef.current.length > 0) {
+             setNewJobsRefreshList(fullData);
+          } else {
+             setJobs(fullData);
+          }
+        } else {
+          setJobs(fullData);
+        }
         // Save to cache with timestamp
         try {
           localStorage.setItem(CACHE_KEY, JSON.stringify({
@@ -1337,11 +1362,37 @@ export default function App() {
                 {isFullLoading && (
                   <div className="flex items-center gap-1.5 ml-2 bg-blue-50 px-2 py-0.5 rounded-full text-[#3b82f6] animate-pulse">
                     <Loader2 size={12} className="animate-spin" />
-                    <span>Loading more...</span>
+                    <span>Checking info...</span>
                   </div>
                 )}
               </div>
             </div>
+
+            <AnimatePresence>
+              {newJobsRefreshList && (
+                <motion.div
+                   initial={{ opacity: 0, y: -20, height: 0 }}
+                   animate={{ opacity: 1, y: 0, height: 'auto' }}
+                   exit={{ opacity: 0, scale: 0.9, height: 0 }}
+                   className="flex justify-center mb-6 overflow-hidden"
+                >
+                   <button 
+                     onClick={() => {
+                       setJobs(newJobsRefreshList);
+                       setNewJobsRefreshList(null);
+                       setCurrentPage(1);
+                       if (scrollContainerRef.current) {
+                           scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                       }
+                     }}
+                     className="bg-[#3b82f6] text-white px-5 py-2.5 rounded-full shadow-lg shadow-blue-500/30 font-bold text-sm flex items-center gap-2 hover:bg-[#2563eb] transition-all hover:scale-105"
+                   >
+                     <Sparkles size={18} className="animate-pulse" />
+                     নতুন সার্কুলার পাওয়া গেছে! রিলোড করুন
+                   </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Job Grid/List */}
             <div className="space-y-3">
