@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
+import InstallPWA from './components/InstallPWA';
 import { 
   Building2, 
   Calendar, 
@@ -293,41 +294,9 @@ export default function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [activePage, setActivePage] = useState<'home' | 'privacy' | 'terms' | 'contact'>('home');
   const [jobSummaries, setJobSummaries] = useState<Record<string, { text: string; loading: boolean; error?: string }>>({});
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [newJobsRefreshList, setNewJobsRefreshList] = useState<Job[] | null>(null);
-  const [isStandalone, setIsStandalone] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(false);
 
-  useEffect(() => {
-    // Check if the app is already installed/running in standalone mode
-    const isRunningStandalone = window.matchMedia('(display-mode: standalone)').matches || ('standalone' in navigator && (navigator as any).standalone) === true;
-    setIsStandalone(isRunningStandalone);
-
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, []);
-
-  const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setDeferredPrompt(null);
-      }
-    } else {
-      // Provide fallback instructions for devices that don't support beforeinstallprompt (like iOS Safari) or when inside an iframe
-      alert('To install this app on your device:\n\n• iOS Safari: Tap the Share button at the bottom and select "Add to Home Screen".\n\n• Android Chrome: Tap the 3-dot menu icon in the top right and select "Add to Home screen" or "Install app".');
-    }
-  };
-  
   const aiRef = React.useRef<GoogleGenAI | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -1216,15 +1185,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-6">
-              {!isStandalone && (
-                <button
-                  onClick={handleInstallClick}
-                  className="md:hidden flex items-center gap-1.5 px-3 py-1.5 bg-[#3b82f6] text-white rounded-full text-[11px] font-bold shadow-md hover:bg-[#2563eb] transition-colors"
-                >
-                  <Download size={12} />
-                  Install App
-                </button>
-              )}
+              <InstallPWA />
               <a 
                 href="https://www.talukdaracademy.com.bd/p/birth-date-calculate-your-age-year-here.html"
                 target="_blank"
