@@ -16,6 +16,7 @@ import {
   ChevronRight,
   ChevronLeft,
   X,
+  Download,
   TrendingUp,
   LayoutDashboard,
   ShieldCheck,
@@ -293,6 +294,29 @@ export default function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [activePage, setActivePage] = useState<'home' | 'privacy' | 'terms' | 'contact'>('home');
   const [jobSummaries, setJobSummaries] = useState<Record<string, { text: string; loading: boolean; error?: string }>>({});
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
   
   const aiRef = React.useRef<GoogleGenAI | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
@@ -1160,6 +1184,15 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-6">
+              {deferredPrompt && (
+                <button
+                  onClick={handleInstallClick}
+                  className="md:hidden flex items-center gap-1.5 px-3 py-1.5 bg-[#3b82f6] text-white rounded-full text-[11px] font-bold shadow-md hover:bg-[#2563eb] transition-colors"
+                >
+                  <Download size={12} />
+                  Install App
+                </button>
+              )}
               <a 
                 href="https://www.talukdaracademy.com.bd/p/birth-date-calculate-your-age-year-here.html"
                 target="_blank"
