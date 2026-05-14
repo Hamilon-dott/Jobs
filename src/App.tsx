@@ -280,7 +280,6 @@ const AdComponent = () => {
 export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isFullLoading, setIsFullLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
   const [filterCategory, setFilterCategory] = useState('সকল ক্যাটাগরি');
@@ -296,8 +295,13 @@ export default function App() {
   const [jobSummaries, setJobSummaries] = useState<Record<string, { text: string; loading: boolean; error?: string }>>({});
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [newJobsRefreshList, setNewJobsRefreshList] = useState<Job[] | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    // Check if the app is already installed/running in standalone mode
+    const isRunningStandalone = window.matchMedia('(display-mode: standalone)').matches || ('standalone' in navigator && (navigator as any).standalone) === true;
+    setIsStandalone(isRunningStandalone);
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -311,11 +315,15 @@ export default function App() {
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    } else {
+      // Provide fallback instructions for devices that don't support beforeinstallprompt (like iOS Safari) or when inside an iframe
+      alert('To install this app on your device:\n\n• iOS Safari: Tap the Share button at the bottom and select "Add to Home Screen".\n\n• Android Chrome: Tap the 3-dot menu icon in the top right and select "Add to Home screen" or "Install app".');
     }
   };
   
@@ -700,6 +708,13 @@ export default function App() {
 
   useEffect(() => {
     fetchJobs();
+    
+    // Check for new jobs every 15 minutes in the background
+    const intervalId = setInterval(() => {
+      fetchJobs();
+    }, 15 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const getFallbackJobs = () => {
@@ -743,13 +758,10 @@ export default function App() {
 
   const fetchJobs = async () => {
     const CACHE_KEY = 'job_db_cache';
-    const SYNC_INTERVAL = 10 * 60 * 1000; // 10 minutes for full sync silence
 
     let hasCachedData = false;
 
-    let shouldSkipFullFetch = false;
-
-    // Stage 0: Priority Cache Load
+    // Priority Cache Load
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
@@ -760,11 +772,6 @@ export default function App() {
           setCurrentPage(1);
           setLoading(false);
           hasCachedData = true;
-          
-          const now = Date.now();
-          if (now - lastSyncTime < 2 * 60 * 1000) {
-            shouldSkipFullFetch = true;
-          }
         }
       }
     } catch (e) {
@@ -775,70 +782,67 @@ export default function App() {
       setLoading(true);
     }
     
-    setIsFullLoading(true);
-    const timestamp = Date.now();
-    
+    // Background Full Load (Silent to User)
     try {
-      // Stage 1: Always Fetch Fresh Data in Background (Fast Load)
-      const response = await axios.get(`/api/jobs?t=${timestamp}`);
+      const timestamp = Date.now();
+      const response = await axios.get(`/api/jobs?full=true&t=${timestamp}`);
       const data = response.data;
+      
       if (Array.isArray(data) && data.length > 0) {
+        // Refresh cache in background
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify({
+            lastSyncTime: Date.now(),
+            jobs: data
+          }));
+        } catch (e) {
+          console.warn("Failed to set job cache", e);
+          try {
+             localStorage.setItem(CACHE_KEY, JSON.stringify({
+               lastSyncTime: Date.now(),
+               jobs: data.slice(0, 100) // Fallback to smaller subset
+             }));
+          } catch (e2) {
+             console.error("Cache fallback failed", e2);
+          }
+        }
+        
+        // Always store all known IDs separately (takes very little space) to avoid false "new job" alerts
+        let lastKnownIds: string[] = [];
+        try {
+           const stored = localStorage.getItem('last_known_ids');
+           if (stored) lastKnownIds = JSON.parse(stored);
+           const allIds = Array.from(new Set([...lastKnownIds, ...data.map((j: Job) => String(j.id))]));
+           localStorage.setItem('last_known_ids', JSON.stringify(allIds.slice(0, 500))); // keep last 500
+        } catch (e) {
+           // ignore
+        }
+
         if (hasCachedData) {
-          const existingIds = new Set(jobsRef.current.map(j => j.id));
-          const hasNew = data.some(j => !existingIds.has(j.id));
-          if (hasNew && jobsRef.current.length > 0) {
-            setNewJobsRefreshList(data);
+          const existingIds = new Set(jobsRef.current.map(j => String(j.id)));
+          const knownIdsSet = new Set(lastKnownIds);
+          const existingTitles = new Set(jobsRef.current.map(j => j.title.toLowerCase()));
+          
+          const newJobs = data.filter(j => !existingIds.has(String(j.id)) && !knownIdsSet.has(String(j.id)) && !existingTitles.has(j.title.toLowerCase()));
+          
+          if (newJobs.length > 0 && jobsRef.current.length > 0) {
+             // Only notify if we found completely new jobs
+             setNewJobsRefreshList(data);
           } else {
-            setJobs(data);
+             // If no completely new items, just update items silently
+             setJobs(data);
           }
         } else {
           setJobs(data);
-          if (loading) setLoading(false);
+          setLoading(false);
         }
       }
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
       if (!hasCachedData) {
         setJobs(getFallbackJobs());
-        setLoading(false);
       }
-    }
-
-    if (shouldSkipFullFetch) {
-      setIsFullLoading(false);
-      return;
-    }
-
-    // Stage 2: Background Full Load
-    try {
-      const fullResponse = await axios.get(`/api/jobs?full=true&t=${timestamp}`);
-      const fullData = fullResponse.data;
-      if (Array.isArray(fullData) && fullData.length > 0) {
-        if (hasCachedData) {
-          const existingIds = new Set(jobsRef.current.map(j => j.id));
-          const hasNew = fullData.some(j => !existingIds.has(j.id));
-          if (hasNew && jobsRef.current.length > 0) {
-             setNewJobsRefreshList(fullData);
-          } else {
-             setJobs(fullData);
-          }
-        } else {
-          setJobs(fullData);
-        }
-        // Save to cache with timestamp
-        try {
-          localStorage.setItem(CACHE_KEY, JSON.stringify({
-            lastSyncTime: Date.now(),
-            jobs: fullData
-          }));
-        } catch (e) {
-          console.warn("Failed to set job cache", e);
-        }
-      }
-    } catch (e) {
-      console.warn('Background full fetch failed:', e);
     } finally {
-      setIsFullLoading(false);
       setLoading(false);
     }
   };
@@ -1209,7 +1213,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-6">
-              {deferredPrompt && (
+              {!isStandalone && (
                 <button
                   onClick={handleInstallClick}
                   className="md:hidden flex items-center gap-1.5 px-3 py-1.5 bg-[#3b82f6] text-white rounded-full text-[11px] font-bold shadow-md hover:bg-[#2563eb] transition-colors"
@@ -1359,12 +1363,6 @@ export default function App() {
               <h2 className="text-[20px] font-bold text-[#0f172a]">সর্বশেষ সার্কুলারসমূহ</h2>
               <div className="flex items-center gap-2 text-[14px] text-[#64748b] font-medium bg-slate-100 px-3 py-1 rounded-full">
                 {toBengaliNumber(filteredJobs.length)} টি সার্কুলার পাওয়া গেছে
-                {isFullLoading && (
-                  <div className="flex items-center gap-1.5 ml-2 bg-blue-50 px-2 py-0.5 rounded-full text-[#3b82f6] animate-pulse">
-                    <Loader2 size={12} className="animate-spin" />
-                    <span>Checking info...</span>
-                  </div>
-                )}
               </div>
             </div>
 
