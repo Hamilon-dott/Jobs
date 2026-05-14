@@ -1,6 +1,5 @@
 const CACHE_NAME = 'jobs-bd-pwa-cache-v1';
 
-// Add lists of files to cache here.
 const urlsToCache = [
   '/',
   '/index.html',
@@ -8,7 +7,6 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
-  // Perform install steps
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
