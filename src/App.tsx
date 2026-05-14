@@ -296,6 +296,7 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [newJobsRefreshList, setNewJobsRefreshList] = useState<Job[] | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [isFirstVisit, setIsFirstVisit] = useState(false);
 
   useEffect(() => {
     // Check if the app is already installed/running in standalone mode
@@ -780,6 +781,7 @@ export default function App() {
 
     if (!hasCachedData) {
       setLoading(true);
+      setIsFirstVisit(true);
     }
     
     // Background Full Load (Silent to User)
@@ -800,7 +802,7 @@ export default function App() {
           try {
              localStorage.setItem(CACHE_KEY, JSON.stringify({
                lastSyncTime: Date.now(),
-               jobs: data.slice(0, 100) // Fallback to smaller subset
+               jobs: data.slice(0, 250) // Fallback to smaller subset
              }));
           } catch (e2) {
              console.error("Cache fallback failed", e2);
@@ -844,6 +846,7 @@ export default function App() {
       }
     } finally {
       setLoading(false);
+      setIsFirstVisit(false);
     }
   };
 
@@ -1398,7 +1401,11 @@ export default function App() {
                 {loading ? (
                   <div className="flex flex-col items-center justify-center py-20 gap-4">
                     <Loader2 className="animate-spin text-[#3b82f6]" size={32} />
-                    <p className="text-sm font-medium text-[#64748b]">Updating dashboard...</p>
+                    <p className="text-sm font-medium text-[#64748b]">
+                      {isFirstVisit 
+                        ? "আপনি প্রথমবারের মতো এসেছেন। একটু সময় দিন, সার্ভারের সাথে কানেক্ট হচ্ছে..." 
+                        : "Updating dashboard..."}
+                    </p>
                   </div>
                 ) : paginatedJobs.length > 0 ? (
                   paginatedJobs.flatMap((job, idx) => {

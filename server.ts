@@ -315,7 +315,7 @@ async function fetchLatestJobs(isFull: boolean = false) {
 
         const response = await axios.get(`${source.baseUrl}&per_page=100&page=${page}`, { 
           httpsAgent, 
-          timeout: 6000,
+          timeout: 20000,
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
         });
         
