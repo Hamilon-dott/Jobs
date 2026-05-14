@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
+import InstallPWA from './components/InstallPWA';
 import { 
   Building2, 
   Calendar, 
@@ -1184,6 +1185,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-6">
+              <InstallPWA />
               <a 
                 href="https://www.talukdaracademy.com.bd/p/birth-date-calculate-your-age-year-here.html"
                 target="_blank"
