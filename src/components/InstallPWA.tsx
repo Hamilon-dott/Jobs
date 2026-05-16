@@ -23,6 +23,11 @@ export default function InstallPWA() {
   }, []);
 
   const handleInstallClick = async () => {
+    if (window.self !== window.top) {
+      alert("App installation is blocked inside this preview window. Please open the app in a new tab first (using the icon in the top right corner) and try again.");
+      return;
+    }
+
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
